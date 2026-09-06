@@ -1,0 +1,2863 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="Lazada-style marketplace prototype: browse, search and filter, product detail with variations, cart, checkout, order tracking and reviews. Every main flow is completable."
+    />
+    <title>Marketplace</title>
+
+    <!--
+      Bootstrap 5.3 owns the styling on this page, so it deliberately does NOT
+      link /prototype.css — that stylesheet sets body padding and its own
+      colour tokens, which fight Bootstrap's reboot on a full-page layout.
+      The back link to the index is kept, per the prototype conventions.
+    -->
+    <!--
+      Bootstrap 5.3.3 is served from public/vendor/ rather than a CDN, so the
+      prototype works offline and in CI, where outbound network access is not
+      guaranteed. Swap in the jsDelivr URL if you prefer.
+    -->
+    <link href="/vendor/bootstrap-5.3.3/bootstrap.min.css" rel="stylesheet" />
+
+    <style>
+      :root {
+        --lz-orange: #f57224;
+        --lz-orange-dark: #e35f13;
+        --lz-blue: #0f146d;
+        --lz-pink: #fe4462;
+        --lz-bg: #f5f5f5;
+      }
+
+      body {
+        background: var(--lz-bg);
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        padding-bottom: 4.5rem;
+      }
+
+      @media (min-width: 768px) {
+        body {
+          padding-bottom: 0;
+        }
+      }
+
+      /* Bootstrap 5.3 builds buttons from CSS variables, so the brand colour
+         drops in without overriding any rules. */
+      .btn-primary {
+        --bs-btn-bg: var(--lz-orange);
+        --bs-btn-border-color: var(--lz-orange);
+        --bs-btn-hover-bg: var(--lz-orange-dark);
+        --bs-btn-hover-border-color: var(--lz-orange-dark);
+        --bs-btn-active-bg: #d55810;
+        --bs-btn-active-border-color: #d55810;
+        --bs-btn-disabled-bg: #f9b58a;
+        --bs-btn-disabled-border-color: #f9b58a;
+      }
+
+      .btn-outline-primary {
+        --bs-btn-color: var(--lz-orange);
+        --bs-btn-border-color: var(--lz-orange);
+        --bs-btn-hover-bg: var(--lz-orange);
+        --bs-btn-hover-border-color: var(--lz-orange);
+        --bs-btn-active-bg: var(--lz-orange-dark);
+        --bs-btn-active-border-color: var(--lz-orange-dark);
+      }
+
+      .text-brand {
+        color: var(--lz-orange) !important;
+      }
+
+      .bg-brand {
+        background: var(--lz-orange) !important;
+      }
+
+      .lz-topbar {
+        background: var(--lz-blue);
+        font-size: 0.78rem;
+      }
+
+      .lz-header {
+        background: linear-gradient(90deg, #fe4462 0%, #f57224 100%);
+      }
+
+      .lz-logo {
+        font-weight: 800;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        color: #fff;
+        text-decoration: none;
+      }
+
+      .lz-catnav {
+        background: #fff;
+        border-bottom: 1px solid #e9e9e9;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .lz-catnav::-webkit-scrollbar {
+        display: none;
+      }
+
+      .lz-catnav .nav-link {
+        color: #333;
+        white-space: nowrap;
+        font-size: 0.9rem;
+      }
+
+      .lz-catnav .nav-link:hover,
+      .lz-catnav .nav-link.active {
+        color: var(--lz-orange);
+      }
+
+      .carousel-control-prev,
+      .carousel-control-next {
+        width: 3rem;
+      }
+
+      .banner-slide {
+        min-height: 190px;
+        padding: 1.5rem 3.5rem;
+      }
+
+      @media (min-width: 768px) {
+        .banner-slide {
+          padding: 3rem 4rem;
+        }
+      }
+
+      .card-product {
+        border: 0;
+        border-radius: 0.4rem;
+        overflow: hidden;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+        height: 100%;
+      }
+
+      .card-product:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12);
+      }
+
+      .card-product img {
+        aspect-ratio: 1;
+        object-fit: cover;
+        width: 100%;
+        background: #fafafa;
+      }
+
+      .product-title {
+        font-size: 0.85rem;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-clamp: 2;
+        overflow: hidden;
+        color: #212529;
+      }
+
+      .price {
+        color: var(--lz-orange);
+        font-weight: 700;
+      }
+
+      .price-was {
+        font-size: 0.78rem;
+        color: #9e9e9e;
+        text-decoration: line-through;
+      }
+
+      .discount-badge {
+        background: #ffeee5;
+        color: var(--lz-orange);
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0.05rem 0.25rem;
+        border-radius: 0.15rem;
+      }
+
+      .stars {
+        color: #ffc400;
+        font-size: 0.78rem;
+        letter-spacing: -0.5px;
+      }
+
+      .countdown-box {
+        background: #000;
+        color: #fff;
+        border-radius: 0.2rem;
+        padding: 0.1rem 0.35rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .variation-btn {
+        border: 1px solid #d9d9d9;
+        background: #fff;
+        border-radius: 0.2rem;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+
+      .variation-btn[aria-pressed='true'] {
+        border-color: var(--lz-orange);
+        color: var(--lz-orange);
+        background: #fff7f2;
+      }
+
+      .variation-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        text-decoration: line-through;
+      }
+
+      .thumb {
+        width: 56px;
+        height: 56px;
+        object-fit: cover;
+        border: 2px solid transparent;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        background: #fafafa;
+      }
+
+      .thumb[aria-pressed='true'] {
+        border-color: var(--lz-orange);
+      }
+
+      .gallery-main {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: cover;
+        border-radius: 0.4rem;
+        background: #fafafa;
+      }
+
+      .rating-bar {
+        height: 8px;
+      }
+
+      .timeline {
+        list-style: none;
+        margin: 0;
+        padding-left: 0;
+      }
+
+      .timeline li {
+        position: relative;
+        padding-left: 1.75rem;
+        padding-bottom: 1.15rem;
+        font-size: 0.9rem;
+      }
+
+      .timeline li::before {
+        content: '';
+        position: absolute;
+        left: 0.28rem;
+        top: 0.35rem;
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        background: #d9d9d9;
+      }
+
+      .timeline li:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        left: 0.55rem;
+        top: 1.1rem;
+        bottom: 0;
+        width: 1px;
+        background: #e2e2e2;
+      }
+
+      .timeline li.done::before {
+        background: #2e7d32;
+      }
+
+      .timeline li.current::before {
+        background: var(--lz-orange);
+        box-shadow: 0 0 0 3px #ffe3d1;
+      }
+
+      .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid #e5e5e5;
+        z-index: 1030;
+      }
+
+      .bottom-nav a {
+        flex: 1;
+        text-align: center;
+        padding: 0.45rem 0;
+        font-size: 0.68rem;
+        color: #666;
+        text-decoration: none;
+      }
+
+      .bottom-nav a.active {
+        color: var(--lz-orange);
+      }
+
+      .bottom-nav .icon {
+        display: block;
+        font-size: 1.15rem;
+        line-height: 1.1;
+      }
+
+      .seller-strip {
+        background: #fafafa;
+        border-radius: 0.3rem;
+      }
+
+      .voucher-chip {
+        border: 1px dashed var(--lz-orange);
+        color: var(--lz-orange);
+        border-radius: 0.2rem;
+        font-size: 0.75rem;
+        padding: 0.05rem 0.35rem;
+      }
+
+      .empty-state {
+        padding: 3.5rem 1rem;
+        text-align: center;
+        color: #8a8a8a;
+      }
+
+      .empty-state .icon {
+        font-size: 3rem;
+        display: block;
+        margin-bottom: 0.75rem;
+      }
+
+      .sticky-summary {
+        position: sticky;
+        top: 1rem;
+      }
+
+      .search-suggestion {
+        cursor: pointer;
+      }
+
+      /* Keeps focus visible against the gradient header. */
+      .lz-header .form-control:focus,
+      .lz-header .btn:focus-visible {
+        box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.5);
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1 class="visually-hidden">Marketplace</h1>
+
+    <!-- ── Top bar ───────────────────────────────────────────────────────── -->
+    <div class="lz-topbar text-white py-1 d-none d-md-block">
+      <div class="container d-flex justify-content-between align-items-center">
+        <a
+          href="/"
+          class="text-white text-decoration-none"
+          data-testid="back-to-index"
+          >&larr; All prototypes</a
+        >
+        <div class="d-flex gap-3 align-items-center">
+          <span>Sell on Marketplace</span>
+          <span class="opacity-50">|</span>
+          <span>Customer Care</span>
+          <span class="opacity-50">|</span>
+          <span data-testid="topbar-user">Guest</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Header ────────────────────────────────────────────────────────── -->
+    <header class="lz-header py-2 py-md-3 sticky-top" data-testid="mkt-header">
+      <div class="container">
+        <div class="row align-items-center g-2">
+          <div class="col-auto">
+            <a href="#/home" class="lz-logo" data-testid="mkt-logo">market<span class="opacity-75">place</span></a>
+          </div>
+
+          <div class="col order-3 order-md-2">
+            <form class="position-relative" data-testid="mkt-search-form" autocomplete="off">
+              <div class="input-group">
+                <input
+                  type="search"
+                  class="form-control border-0"
+                  placeholder="Search in Marketplace"
+                  aria-label="Search products"
+                  data-testid="mkt-search-input"
+                />
+                <button class="btn btn-light border-0 px-3" type="submit" data-testid="mkt-search-submit">
+                  🔍<span class="visually-hidden">Search</span>
+                </button>
+              </div>
+              <div
+                class="list-group position-absolute w-100 shadow-sm d-none"
+                style="z-index: 1050"
+                data-testid="mkt-search-suggestions"
+              ></div>
+            </form>
+          </div>
+
+          <div class="col-auto order-2 order-md-3 ms-auto">
+            <div class="d-flex align-items-center gap-1 gap-md-2">
+              <button
+                class="btn btn-sm text-white d-none d-md-inline-flex align-items-center gap-1"
+                data-action="open-login"
+                data-testid="mkt-account"
+              >
+                <span>👤</span><span class="d-none d-lg-inline" data-testid="mkt-account-label">Login</span>
+              </button>
+              <a
+                href="#/wishlist"
+                class="btn btn-sm text-white position-relative"
+                data-testid="mkt-wishlist-link"
+                aria-label="Wishlist"
+              >
+                ❤️
+                <span
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-dark d-none"
+                  data-testid="mkt-wishlist-badge"
+                  >0</span
+                >
+              </a>
+              <a
+                href="#/cart"
+                class="btn btn-sm text-white position-relative"
+                data-testid="mkt-cart-link"
+                aria-label="Cart"
+              >
+                🛒
+                <span
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-light text-dark d-none"
+                  data-testid="mkt-cart-badge"
+                  >0</span
+                >
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Category nav ──────────────────────────────────────────────────── -->
+    <nav class="lz-catnav" aria-label="Categories">
+      <div class="container">
+        <ul class="nav flex-nowrap py-1" data-testid="mkt-catnav"></ul>
+      </div>
+    </nav>
+
+    <!-- ── Routed view ───────────────────────────────────────────────────── -->
+    <main id="view" class="container py-3"></main>
+
+    <!-- ── Footer ────────────────────────────────────────────────────────── -->
+    <footer class="bg-white border-top mt-4 py-4 d-none d-md-block">
+      <div class="container small text-muted">
+        <div class="row g-4">
+          <div class="col-md-3">
+            <h6 class="text-dark">Customer Care</h6>
+            <div>Help Centre</div>
+            <div>How to Buy</div>
+            <div>Returns &amp; Refunds</div>
+          </div>
+          <div class="col-md-3">
+            <h6 class="text-dark">Earn With Us</h6>
+            <div>Sell on Marketplace</div>
+            <div>Affiliate Programme</div>
+          </div>
+          <div class="col-md-3">
+            <h6 class="text-dark">Payment</h6>
+            <div>Cash on Delivery</div>
+            <div>Credit / Debit Card</div>
+            <div>Wallet</div>
+          </div>
+          <div class="col-md-3">
+            <h6 class="text-dark">Prototype</h6>
+            <div>Data is in-memory — a reload resets it.</div>
+            <div><a href="/" class="text-decoration-none">&larr; Prototype index</a></div>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ── Mobile bottom nav ─────────────────────────────────────────────── -->
+    <nav class="bottom-nav d-flex d-md-none" data-testid="mkt-bottom-nav">
+      <a href="#/home" data-nav="home"><span class="icon">🏠</span>Home</a>
+      <a href="#/search" data-nav="search"><span class="icon">🔍</span>Search</a>
+      <a href="#/cart" data-nav="cart"><span class="icon">🛒</span>Cart</a>
+      <a href="#/orders" data-nav="orders"><span class="icon">📦</span>Orders</a>
+      <a href="#/wishlist" data-nav="wishlist"><span class="icon">❤️</span>Saved</a>
+    </nav>
+
+    <!-- ── Toasts ────────────────────────────────────────────────────────── -->
+    <div
+      class="toast-container position-fixed bottom-0 end-0 p-3"
+      style="z-index: 1090; margin-bottom: 4rem"
+      data-testid="toast-container"
+    ></div>
+
+    <!-- ── Login modal ───────────────────────────────────────────────────── -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" data-testid="login-form" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title">Login or sign up</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted small">
+              Any name and email works — this is a prototype, nothing is sent anywhere.
+            </p>
+            <div class="mb-3">
+              <label class="form-label" for="login-name">Name</label>
+              <input
+                class="form-control"
+                id="login-name"
+                required
+                value="Alex Chan"
+                data-testid="login-name"
+              />
+              <div class="invalid-feedback">Enter your name.</div>
+            </div>
+            <div class="mb-1">
+              <label class="form-label" for="login-email">Email or phone</label>
+              <input
+                class="form-control"
+                id="login-email"
+                required
+                value="alex@example.com"
+                data-testid="login-email"
+              />
+              <div class="invalid-feedback">Enter an email or phone number.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary w-100" data-testid="login-submit">Login</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Address modal ─────────────────────────────────────────────────── -->
+    <div class="modal fade" id="addressModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" data-testid="address-form" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title">Add a delivery address</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="addr-name">Full name</label>
+                <input class="form-control" id="addr-name" required data-testid="addr-name" />
+                <div class="invalid-feedback">Required.</div>
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="addr-phone">Phone</label>
+                <input class="form-control" id="addr-phone" required data-testid="addr-phone" />
+                <div class="invalid-feedback">Required.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="addr-line">Address</label>
+                <input class="form-control" id="addr-line" required data-testid="addr-line" />
+                <div class="invalid-feedback">Required.</div>
+              </div>
+              <div class="col-7">
+                <label class="form-label" for="addr-city">City / Province</label>
+                <input class="form-control" id="addr-city" required data-testid="addr-city" />
+                <div class="invalid-feedback">Required.</div>
+              </div>
+              <div class="col-5">
+                <label class="form-label" for="addr-post">Postcode</label>
+                <input class="form-control" id="addr-post" required data-testid="addr-post" />
+                <div class="invalid-feedback">Required.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label d-block">Label</label>
+                <div class="btn-group" role="group">
+                  <input type="radio" class="btn-check" name="addr-label" id="addr-home" value="Home" checked />
+                  <label class="btn btn-outline-secondary btn-sm" for="addr-home">Home</label>
+                  <input type="radio" class="btn-check" name="addr-label" id="addr-work" value="Work" />
+                  <label class="btn btn-outline-secondary btn-sm" for="addr-work">Work</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-testid="addr-save">Save address</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Review modal ──────────────────────────────────────────────────── -->
+    <div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" data-testid="review-form" novalidate>
+          <div class="modal-header">
+            <h5 class="modal-title">Write a review</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label d-block">Your rating</label>
+              <div class="btn-group" role="group" data-testid="review-rating-group">
+                <input type="radio" class="btn-check" name="review-rating" id="rr5" value="5" checked />
+                <label class="btn btn-outline-secondary btn-sm" for="rr5">5 ★</label>
+                <input type="radio" class="btn-check" name="review-rating" id="rr4" value="4" />
+                <label class="btn btn-outline-secondary btn-sm" for="rr4">4 ★</label>
+                <input type="radio" class="btn-check" name="review-rating" id="rr3" value="3" />
+                <label class="btn btn-outline-secondary btn-sm" for="rr3">3 ★</label>
+                <input type="radio" class="btn-check" name="review-rating" id="rr2" value="2" />
+                <label class="btn btn-outline-secondary btn-sm" for="rr2">2 ★</label>
+                <input type="radio" class="btn-check" name="review-rating" id="rr1" value="1" />
+                <label class="btn btn-outline-secondary btn-sm" for="rr1">1 ★</label>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="review-text">Your review</label>
+              <textarea
+                class="form-control"
+                id="review-text"
+                rows="4"
+                required
+                placeholder="What did you think of it?"
+                data-testid="review-text"
+              ></textarea>
+              <div class="invalid-feedback">Write a few words before submitting.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-testid="review-submit">Submit review</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js"></script>
+
+    <script>
+      /* =====================================================================
+       * Marketplace prototype
+       *
+       * A self-contained Lazada-style storefront. Every main flow can be
+       * completed end to end: browse, search and filter, pick variations, add
+       * to cart, apply a voucher, check out against a saved or new address,
+       * pay, track the order through to delivery, and review what you bought.
+       *
+       * State lives in memory only, so a reload gives you a clean shop.
+       * Product imagery is generated as inline SVG, so the page needs no
+       * network access beyond the Bootstrap CDN.
+       * ===================================================================== */
+      ;(() => {
+        'use strict'
+
+        /* ── Utilities ──────────────────────────────────────────────────── */
+
+        const $ = (selector, root = document) => root.querySelector(selector)
+        const $$ = (selector, root = document) => [...root.querySelectorAll(selector)]
+
+        const escapeHtml = (value) =>
+          String(value).replace(
+            /[&<>"']/g,
+            (char) =>
+              ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char],
+          )
+
+        const baht = (amount) =>
+          `฿${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+
+        const stars = (rating) => {
+          const full = Math.floor(rating)
+          const half = rating - full >= 0.5
+          return '★'.repeat(full) + (half ? '⯨' : '') + '☆'.repeat(5 - full - (half ? 1 : 0))
+        }
+
+        const discountPct = (product) =>
+          Math.round(((product.wasPrice - product.price) / product.wasPrice) * 100)
+
+        /** Deterministic pseudo-random, so the shop looks the same every load. */
+        const seeded = (seed) => {
+          let value = seed * 9301 + 49297
+          return () => {
+            value = (value * 9301 + 49297) % 233280
+            return value / 233280
+          }
+        }
+
+        /** Inline SVG product imagery — no external requests, no broken images. */
+        const productImage = (product, variant = 0) => {
+          const hue = (product.hue + variant * 28) % 360
+          const size = 600
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="hsl(${hue} 80% 94%)"/>
+                <stop offset="1" stop-color="hsl(${(hue + 45) % 360} 75% 84%)"/>
+              </linearGradient>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#bg)"/>
+            <circle cx="${size / 2}" cy="${size * 0.44}" r="${size * 0.26}" fill="rgba(255,255,255,0.55)"/>
+            <text x="50%" y="44%" font-size="${size * 0.26}" text-anchor="middle" dominant-baseline="central">${product.emoji}</text>
+            <text x="50%" y="82%" font-size="${size * 0.055}" text-anchor="middle"
+                  fill="hsl(${hue} 45% 32%)" font-family="system-ui, sans-serif" font-weight="600">
+              ${escapeHtml(product.name.slice(0, 26))}
+            </text>
+          </svg>`
+          return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replace(/\s+/g, ' '))}`
+        }
+
+        const toast = (message, tone = 'dark') => {
+          const container = $('[data-testid="toast-container"]')
+          const element = document.createElement('div')
+          element.className = `toast align-items-center text-bg-${tone} border-0`
+          element.setAttribute('role', 'status')
+          element.dataset.testid = 'toast'
+          element.innerHTML = `
+            <div class="d-flex">
+              <div class="toast-body">${escapeHtml(message)}</div>
+              <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                      data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>`
+          container.append(element)
+          new bootstrap.Toast(element, { delay: 2600 }).show()
+          element.addEventListener('hidden.bs.toast', () => element.remove())
+        }
+
+        /* ── Catalogue ──────────────────────────────────────────────────── */
+
+        const CATEGORIES = [
+          { id: 'electronics', name: 'Electronics', emoji: '📱' },
+          { id: 'fashion', name: 'Fashion', emoji: '👕' },
+          { id: 'home', name: 'Home & Living', emoji: '🛋️' },
+          { id: 'beauty', name: 'Health & Beauty', emoji: '💄' },
+          { id: 'sports', name: 'Sports & Outdoors', emoji: '⚽' },
+          { id: 'grocery', name: 'Groceries', emoji: '🛒' },
+        ]
+
+        const SELLERS = [
+          { id: 'techhub', name: 'TechHub Official', rating: 4.8, shipsIn: '1 day', badge: 'Mall' },
+          { id: 'urbanwear', name: 'UrbanWear Store', rating: 4.5, shipsIn: '2 days', badge: null },
+          { id: 'homey', name: 'Homey Living', rating: 4.6, shipsIn: '2 days', badge: 'Mall' },
+          { id: 'glowlab', name: 'GlowLab Beauty', rating: 4.7, shipsIn: '1 day', badge: null },
+        ]
+
+        const COLOURS = ['Black', 'White', 'Blue', 'Pink']
+        const CLOTHING_SIZES = ['S', 'M', 'L', 'XL']
+        const SHOE_SIZES = ['38', '39', '40', '41', '42']
+
+        const rawProducts = [
+          ['Wireless Noise-Cancelling Headphones', 'electronics', 2490, 3990, '🎧', 'techhub', 4.7, 1832, 5210, 24, true],
+          ['Smartphone 5G 256GB Dual SIM', 'electronics', 11990, 15900, '📱', 'techhub', 4.8, 4210, 12800, 12, true],
+          ['Mechanical Keyboard RGB 87-key', 'electronics', 1890, 2790, '⌨️', 'techhub', 4.6, 940, 3100, 40, false],
+          ['Smart Watch Fitness Tracker', 'electronics', 1290, 2490, '⌚', 'techhub', 4.4, 2210, 8800, 60, true],
+          ['USB-C 65W Fast Charger', 'electronics', 590, 890, '🔌', 'techhub', 4.5, 1520, 15200, 120, false],
+          ['Oversized Cotton T-Shirt', 'fashion', 290, 590, '👕', 'urbanwear', 4.3, 3120, 22400, 200, true],
+          ['Slim Fit Denim Jeans', 'fashion', 790, 1590, '👖', 'urbanwear', 4.4, 1840, 9600, 85, false],
+          ['Running Shoes Lightweight', 'fashion', 1490, 2590, '👟', 'urbanwear', 4.6, 2640, 11200, 48, true],
+          ['Leather Crossbody Bag', 'fashion', 990, 1990, '👜', 'urbanwear', 4.5, 760, 3400, 30, false],
+          ['Air Fryer 5.5L Digital', 'home', 2190, 3590, '🍳', 'homey', 4.7, 2980, 7400, 26, true],
+          ['Memory Foam Pillow (2-pack)', 'home', 690, 1290, '🛏️', 'homey', 4.5, 1420, 6100, 90, false],
+          ['Robot Vacuum Cleaner', 'home', 5990, 9900, '🤖', 'homey', 4.6, 880, 2200, 15, true],
+          ['Ceramic Dinner Set 16-piece', 'home', 1290, 2190, '🍽️', 'homey', 4.4, 520, 1800, 35, false],
+          ['Vitamin C Brightening Serum', 'beauty', 490, 990, '💧', 'glowlab', 4.6, 5210, 31000, 150, true],
+          ['Matte Liquid Lipstick Set', 'beauty', 390, 790, '💄', 'glowlab', 4.5, 3410, 18600, 110, false],
+          ['Sunscreen SPF50+ PA++++', 'beauty', 350, 620, '🧴', 'glowlab', 4.8, 6120, 42000, 180, true],
+          ['Yoga Mat Non-Slip 6mm', 'sports', 590, 1090, '🧘', 'homey', 4.5, 1120, 5200, 70, false],
+          ['Adjustable Dumbbell 20kg', 'sports', 2890, 4590, '🏋️', 'homey', 4.6, 640, 1900, 18, true],
+          ['Insulated Water Bottle 1L', 'sports', 450, 890, '🚰', 'homey', 4.7, 2240, 14000, 130, false],
+          ['Instant Coffee Bundle (3 jars)', 'grocery', 690, 1090, '☕', 'homey', 4.6, 1810, 9800, 95, true],
+          ['Organic Jasmine Rice 5kg', 'grocery', 320, 450, '🍚', 'homey', 4.5, 980, 12400, 200, false],
+          ['Mixed Nuts Snack Pack 1kg', 'grocery', 420, 750, '🥜', 'homey', 4.4, 1240, 7600, 140, false],
+        ]
+
+        const REVIEW_TEXTS = [
+          'Exactly as described, shipping was quick. Would buy again.',
+          'Good value for the price. Packaging could be better.',
+          'Works perfectly, been using it daily for two weeks.',
+          'Decent quality but took a while to arrive.',
+          'Better than I expected at this price point.',
+          'Seller was responsive and sorted out my question fast.',
+          'Solid build. Minor scratch on arrival but nothing serious.',
+        ]
+
+        const REVIEWERS = ['nattha_s', 'kevin.w', 'pim***', 'j_lee', 'somchai88', 'anon_buyer', 'mira.k']
+
+        const PRODUCTS = rawProducts.map((row, index) => {
+          const [name, category, price, wasPrice, emoji, sellerId, rating, reviewCount, sold, stock, flashSale] = row
+          const random = seeded(index + 7)
+
+          const needsClothingSize = category === 'fashion' && /shirt|jeans/i.test(name)
+          const needsShoeSize = /shoes/i.test(name)
+
+          const reviews = Array.from({ length: 3 + Math.floor(random() * 3) }, (_, i) => ({
+            id: `r${index}-${i}`,
+            author: REVIEWERS[Math.floor(random() * REVIEWERS.length)],
+            rating: Math.max(3, Math.min(5, Math.round(rating + (random() - 0.45) * 1.6))),
+            text: REVIEW_TEXTS[Math.floor(random() * REVIEW_TEXTS.length)],
+            date: `2026-0${1 + Math.floor(random() * 8)}-${10 + Math.floor(random() * 18)}`,
+          }))
+
+          return {
+            id: `p${index + 1}`,
+            name,
+            category,
+            price,
+            wasPrice,
+            emoji,
+            hue: (index * 37) % 360,
+            sellerId,
+            rating,
+            reviewCount,
+            sold,
+            stock,
+            flashSale,
+            freeShipping: price >= 500,
+            colours: category === 'grocery' ? [] : COLOURS.slice(0, 2 + (index % 3)),
+            sizes: needsShoeSize ? SHOE_SIZES : needsClothingSize ? CLOTHING_SIZES : [],
+            // One variation is deliberately sold out, so the "pick a variation"
+            // flow has a real failure case to handle.
+            soldOut: category === 'fashion' ? ['XL', '42'] : [],
+            specs: {
+              Brand: ['Acme', 'Nordia', 'Vantek', 'Lumen'][index % 4],
+              Warranty: category === 'electronics' ? '1 year' : '7-day return',
+              'Ships from': ['Bangkok', 'Chiang Mai', 'Overseas'][index % 3],
+              SKU: `SKU-${1000 + index * 13}`,
+            },
+            reviews,
+          }
+        })
+
+        const productById = (id) => PRODUCTS.find((product) => product.id === id)
+        const sellerById = (id) => SELLERS.find((seller) => seller.id === id)
+        const categoryById = (id) => CATEGORIES.find((category) => category.id === id)
+
+        const VOUCHERS = {
+          LAZ50: { code: 'LAZ50', label: '฿50 off orders over ฿500', minSpend: 500, amount: 50 },
+          SAVE10: { code: 'SAVE10', label: '10% off, up to ฿200', minSpend: 0, percent: 10, cap: 200 },
+          FREESHIP: { code: 'FREESHIP', label: 'Free standard shipping', minSpend: 300, freeShipping: true },
+        }
+
+        const SHIPPING_OPTIONS = [
+          { id: 'standard', name: 'Standard delivery', fee: 30, eta: '3–5 days' },
+          { id: 'express', name: 'Express delivery', fee: 75, eta: '1–2 days' },
+        ]
+
+        const PAYMENT_METHODS = [
+          { id: 'cod', name: 'Cash on delivery', note: 'Pay the courier when it arrives' },
+          { id: 'card', name: 'Credit / debit card', note: 'Visa, Mastercard, JCB' },
+          { id: 'wallet', name: 'Marketplace Wallet', note: 'Balance ฿1,500' },
+        ]
+
+        const ORDER_FLOW = ['to_ship', 'shipping', 'to_receive', 'completed']
+
+        const STATUS_LABELS = {
+          to_ship: 'To ship',
+          shipping: 'Shipping',
+          to_receive: 'To receive',
+          completed: 'Completed',
+          cancelled: 'Cancelled',
+        }
+
+        /* ── State ──────────────────────────────────────────────────────── */
+
+        const state = {
+          route: { name: 'home', params: {} },
+          user: null,
+          cart: [], // { productId, colour, size, qty, selected }
+          wishlist: new Set(),
+          orders: [],
+          addresses: [
+            {
+              id: 'a1',
+              label: 'Home',
+              name: 'Alex Chan',
+              phone: '081 234 5678',
+              line: '188/4 Sukhumvit Soi 22, Khlong Toei',
+              city: 'Bangkok',
+              postcode: '10110',
+            },
+          ],
+          selectedAddressId: 'a1',
+          shippingId: 'standard',
+          paymentId: 'cod',
+          card: { number: '', name: '', expiry: '', cvv: '' },
+          voucher: null,
+          homeVisible: 12,
+          filters: {
+            query: '',
+            category: '',
+            minPrice: '',
+            maxPrice: '',
+            minRating: 0,
+            freeShipping: false,
+            sort: 'relevance',
+          },
+          // Per-product-detail selection, keyed by product id.
+          pdp: {},
+          ordersTab: 'all',
+          flashEndsAt: Date.now() + 1000 * 60 * 60 * 5 + 1000 * 60 * 24,
+        }
+
+        /* ── Cart maths ─────────────────────────────────────────────────── */
+
+        const cartLineKey = (line) => `${line.productId}|${line.colour || ''}|${line.size || ''}`
+
+        const cartCount = () => state.cart.reduce((total, line) => total + line.qty, 0)
+
+        const selectedLines = () => state.cart.filter((line) => line.selected)
+
+        const lineSubtotal = (line) => productById(line.productId).price * line.qty
+
+        function totals(lines = selectedLines()) {
+          const subtotal = lines.reduce((sum, line) => sum + lineSubtotal(line), 0)
+          const shipping = SHIPPING_OPTIONS.find((option) => option.id === state.shippingId)
+
+          let shippingFee = lines.length === 0 ? 0 : shipping.fee
+
+          // Free standard shipping over ฿1,000 — the express upgrade still costs.
+          if (shipping.id === 'standard' && subtotal >= 1000) {
+            shippingFee = 0
+          }
+
+          let discount = 0
+          const voucher = state.voucher
+
+          if (voucher && subtotal >= voucher.minSpend) {
+            if (voucher.amount) {
+              discount = Math.min(voucher.amount, subtotal)
+            } else if (voucher.percent) {
+              discount = Math.min(Math.round((subtotal * voucher.percent) / 100), voucher.cap ?? Infinity)
+            }
+            if (voucher.freeShipping) {
+              shippingFee = 0
+            }
+          }
+
+          return {
+            subtotal,
+            shippingFee,
+            discount,
+            total: Math.max(0, subtotal - discount + shippingFee),
+            count: lines.reduce((sum, line) => sum + line.qty, 0),
+          }
+        }
+
+        function addToCart(productId, { colour, size, qty }) {
+          const candidate = { productId, colour, size }
+          const existing = state.cart.find((line) => cartLineKey(line) === cartLineKey(candidate))
+          const product = productById(productId)
+
+          if (existing) {
+            existing.qty = Math.min(product.stock, existing.qty + qty)
+            existing.selected = true
+          } else {
+            state.cart.push({ productId, colour, size, qty: Math.min(product.stock, qty), selected: true })
+          }
+        }
+
+        /* ── Filtering and sorting ──────────────────────────────────────── */
+
+        function filteredProducts() {
+          const { query, category, minPrice, maxPrice, minRating, freeShipping, sort } = state.filters
+          const term = query.trim().toLowerCase()
+
+          let results = PRODUCTS.filter((product) => {
+            if (term) {
+              const haystack = `${product.name} ${categoryById(product.category).name}`.toLowerCase()
+              if (!haystack.includes(term)) return false
+            }
+            if (category && product.category !== category) return false
+            if (minPrice !== '' && product.price < Number(minPrice)) return false
+            if (maxPrice !== '' && product.price > Number(maxPrice)) return false
+            if (minRating && product.rating < minRating) return false
+            if (freeShipping && !product.freeShipping) return false
+            return true
+          })
+
+          const sorters = {
+            'price-asc': (a, b) => a.price - b.price,
+            'price-desc': (a, b) => b.price - a.price,
+            rating: (a, b) => b.rating - a.rating,
+            popular: (a, b) => b.sold - a.sold,
+            discount: (a, b) => discountPct(b) - discountPct(a),
+          }
+
+          if (sorters[sort]) {
+            results = [...results].sort(sorters[sort])
+          }
+
+          return results
+        }
+
+        const activeFilterCount = () => {
+          const { category, minPrice, maxPrice, minRating, freeShipping } = state.filters
+          return [category, minPrice !== '' , maxPrice !== '', minRating > 0, freeShipping].filter(Boolean)
+            .length
+        }
+
+        /* ── Shared partials ────────────────────────────────────────────── */
+
+        function productCard(product) {
+          const saved = state.wishlist.has(product.id)
+          return `
+            <div class="col-6 col-md-4 col-lg-3 col-xl-2">
+              <div class="card card-product shadow-sm" data-testid="product-card" data-product="${product.id}">
+                <a href="#/product/${product.id}" class="text-decoration-none position-relative"
+                   data-testid="product-card-link">
+                  <img src="${productImage(product)}" alt="${escapeHtml(product.name)}" loading="lazy" />
+                  ${product.flashSale ? '<span class="badge bg-danger position-absolute top-0 start-0 m-1">FLASH</span>' : ''}
+                </a>
+                <div class="card-body p-2 d-flex flex-column">
+                  <a href="#/product/${product.id}" class="text-decoration-none">
+                    <div class="product-title mb-1">${escapeHtml(product.name)}</div>
+                  </a>
+                  <div class="d-flex align-items-baseline gap-1 flex-wrap">
+                    <span class="price" data-testid="product-card-price">${baht(product.price)}</span>
+                    <span class="discount-badge">-${discountPct(product)}%</span>
+                  </div>
+                  <div class="price-was">${baht(product.wasPrice)}</div>
+                  <div class="d-flex justify-content-between align-items-center mt-1">
+                    <span class="stars">${stars(product.rating)}</span>
+                    <span class="text-muted" style="font-size: 0.7rem">${product.sold.toLocaleString()} sold</span>
+                  </div>
+                  ${product.freeShipping ? '<div class="mt-1"><span class="voucher-chip">Free shipping</span></div>' : ''}
+                  <div class="d-flex gap-1 mt-auto pt-2">
+                    <button class="btn btn-sm btn-primary flex-grow-1" data-action="quick-add"
+                            data-product="${product.id}" data-testid="product-card-add">Add</button>
+                    <button class="btn btn-sm btn-outline-secondary" data-action="toggle-wishlist"
+                            data-product="${product.id}" data-testid="product-card-wishlist"
+                            aria-pressed="${saved}" aria-label="Save ${escapeHtml(product.name)}">
+                      ${saved ? '❤️' : '🤍'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>`
+        }
+
+        const productGrid = (products, testid = 'product-grid') =>
+          products.length === 0
+            ? `<div class="empty-state" data-testid="${testid}-empty">
+                 <span class="icon">🔍</span>
+                 <p class="mb-1">Nothing matched those filters.</p>
+                 <button class="btn btn-outline-primary btn-sm" data-action="clear-filters">Clear filters</button>
+               </div>`
+            : `<div class="row g-2 g-md-3" data-testid="${testid}">${products.map(productCard).join('')}</div>`
+
+        const breadcrumb = (trail) => `
+          <nav aria-label="Breadcrumb">
+            <ol class="breadcrumb small">
+              ${trail
+                .map((item, index) =>
+                  index === trail.length - 1
+                    ? `<li class="breadcrumb-item active" aria-current="page">${escapeHtml(item.label)}</li>`
+                    : `<li class="breadcrumb-item"><a href="${item.href}" class="text-decoration-none">${escapeHtml(item.label)}</a></li>`,
+                )
+                .join('')}
+            </ol>
+          </nav>`
+
+        function summaryRows(figures) {
+          return `
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Items (${figures.count})</span><span data-testid="summary-subtotal">${baht(figures.subtotal)}</span>
+            </div>
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Shipping</span>
+              <span data-testid="summary-shipping">${figures.shippingFee === 0 ? 'Free' : baht(figures.shippingFee)}</span>
+            </div>
+            ${
+              figures.discount > 0
+                ? `<div class="d-flex justify-content-between small mb-1 text-success">
+                     <span>Voucher ${escapeHtml(state.voucher.code)}</span>
+                     <span data-testid="summary-discount">-${baht(figures.discount)}</span>
+                   </div>`
+                : ''
+            }
+            <hr class="my-2" />
+            <div class="d-flex justify-content-between align-items-baseline">
+              <span class="fw-semibold">Total</span>
+              <span class="price fs-5" data-testid="summary-total">${baht(figures.total)}</span>
+            </div>`
+        }
+
+        /* ── Views ──────────────────────────────────────────────────────── */
+
+        function homeView() {
+          const flash = PRODUCTS.filter((product) => product.flashSale).slice(0, 6)
+          const visible = PRODUCTS.slice(0, state.homeVisible)
+
+          return `
+            <div id="homeCarousel" class="carousel slide mb-3 rounded overflow-hidden shadow-sm"
+                 data-bs-ride="carousel" data-testid="home-banner">
+              <div class="carousel-indicators">
+                <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="0" class="active" aria-label="Slide 1"></button>
+                <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="1" aria-label="Slide 2"></button>
+                <button type="button" data-bs-target="#homeCarousel" data-bs-slide-to="2" aria-label="Slide 3"></button>
+              </div>
+              <div class="carousel-inner">
+                ${[
+                  ['Mega Sale Weekend', 'Up to 70% off across every category', '#f57224', '#fe4462', '🎉'],
+                  ['Free Shipping', 'On orders over ฿1,000 — no voucher needed', '#0f146d', '#2abbe8', '🚚'],
+                  ['New Arrivals', 'Fresh stock from Mall sellers every Friday', '#5b2c8d', '#f57224', '✨'],
+                ]
+                  .map(
+                    ([title, copy, from, to, emoji], index) => `
+                      <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                        <div class="banner-slide d-flex align-items-center justify-content-between text-white"
+                             style="background: linear-gradient(100deg, ${from}, ${to})">
+                          <div>
+                            <h2 class="fw-bold mb-1">${title}</h2>
+                            <p class="mb-3 opacity-75">${copy}</p>
+                            <a href="#/search" class="btn btn-light btn-sm fw-semibold">Shop now</a>
+                          </div>
+                          <div style="font-size: 4.5rem" aria-hidden="true">${emoji}</div>
+                        </div>
+                      </div>`,
+                  )
+                  .join('')}
+              </div>
+              <button class="carousel-control-prev" type="button" data-bs-target="#homeCarousel" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span>
+              </button>
+              <button class="carousel-control-next" type="button" data-bs-target="#homeCarousel" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span>
+              </button>
+            </div>
+
+            <div class="bg-white rounded shadow-sm p-3 mb-3">
+              <h6 class="text-uppercase text-muted small mb-3">Categories</h6>
+              <div class="row g-2 text-center">
+                ${CATEGORIES.map(
+                  (category) => `
+                    <div class="col-4 col-md-2">
+                      <a href="#/search?category=${category.id}" class="text-decoration-none text-dark d-block p-2 rounded"
+                         data-testid="category-tile" data-category="${category.id}">
+                        <div style="font-size: 1.9rem">${category.emoji}</div>
+                        <div style="font-size: 0.78rem">${escapeHtml(category.name)}</div>
+                      </a>
+                    </div>`,
+                ).join('')}
+              </div>
+            </div>
+
+            <div class="bg-white rounded shadow-sm p-3 mb-3">
+              <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                <h5 class="text-brand fw-bold mb-0">⚡ Flash Sale</h5>
+                <span class="text-muted small">Ends in</span>
+                <span data-countdown data-testid="flash-countdown" class="d-inline-flex gap-1"></span>
+                <a href="#/search?sort=discount" class="ms-auto small text-decoration-none text-brand">Shop all &rsaquo;</a>
+              </div>
+              ${productGrid(flash, 'flash-grid')}
+            </div>
+
+            <div class="bg-white rounded shadow-sm p-3">
+              <h5 class="fw-bold mb-3">Just For You</h5>
+              ${productGrid(visible, 'home-grid')}
+              ${
+                state.homeVisible < PRODUCTS.length
+                  ? `<div class="text-center mt-3">
+                       <button class="btn btn-outline-primary" data-action="load-more" data-testid="load-more">
+                         Load more
+                       </button>
+                     </div>`
+                  : `<p class="text-center text-muted small mt-3 mb-0" data-testid="home-grid-end">
+                       That's all ${PRODUCTS.length} products.
+                     </p>`
+              }
+            </div>`
+        }
+
+        /**
+         * The panel is rendered twice — a desktop sidebar and a mobile
+         * offcanvas — so every `id`, radio group `name` and `data-testid` is
+         * suffixed with the scope. Without that, duplicate ids make each
+         * `<label for>` in the drawer drive the hidden sidebar control instead.
+         *
+         * @param {string} scope '' for the sidebar, '-mobile' for the drawer.
+         */
+        function filterPanel(scope = '') {
+          const { category, minPrice, maxPrice, minRating, freeShipping } = state.filters
+          const id = (name) => `${name}${scope}`
+
+          return `
+            <div class="bg-white rounded shadow-sm p-3" data-testid="filter-panel${scope}">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0 ${scope ? 'visually-hidden' : ''}">Filters</h6>
+                ${
+                  activeFilterCount() > 0
+                    ? `<button class="btn btn-link btn-sm p-0 text-decoration-none" data-action="clear-filters"
+                               data-testid="clear-filters${scope}">Clear (${activeFilterCount()})</button>`
+                    : ''
+                }
+              </div>
+
+              <div class="mb-3">
+                <div class="small fw-semibold mb-1">Category</div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="${id('filter-category')}" id="${id('cat-all')}"
+                         value="" ${category === '' ? 'checked' : ''}
+                         data-filter="category" data-testid="filter-category-all${scope}" />
+                  <label class="form-check-label small" for="${id('cat-all')}">All categories</label>
+                </div>
+                ${CATEGORIES.map(
+                  (item) => `
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="${id('filter-category')}"
+                             id="${id(`cat-${item.id}`)}" value="${item.id}"
+                             ${category === item.id ? 'checked' : ''}
+                             data-filter="category" data-testid="filter-category${scope}" data-category="${item.id}" />
+                      <label class="form-check-label small" for="${id(`cat-${item.id}`)}">${escapeHtml(item.name)}</label>
+                    </div>`,
+                ).join('')}
+              </div>
+
+              <div class="mb-3">
+                <div class="small fw-semibold mb-1">Price range</div>
+                <div class="d-flex align-items-center gap-1">
+                  <input type="number" min="0" class="form-control form-control-sm" placeholder="Min"
+                         value="${minPrice}" data-price="min" data-testid="filter-price-min${scope}"
+                         aria-label="Minimum price" />
+                  <span class="text-muted">–</span>
+                  <input type="number" min="0" class="form-control form-control-sm" placeholder="Max"
+                         value="${maxPrice}" data-price="max" data-testid="filter-price-max${scope}"
+                         aria-label="Maximum price" />
+                </div>
+                <button class="btn btn-sm btn-outline-primary w-100 mt-2" data-action="apply-price"
+                        data-scope="${scope}" data-testid="filter-price-apply${scope}">Apply</button>
+              </div>
+
+              <div class="mb-3">
+                <div class="small fw-semibold mb-1">Rating</div>
+                ${[4, 3, 0]
+                  .map(
+                    (value) => `
+                      <div class="form-check">
+                        <input class="form-check-input" type="radio" name="${id('filter-rating')}"
+                               id="${id(`rate-${value}`)}" value="${value}"
+                               ${minRating === value ? 'checked' : ''}
+                               data-filter="rating" data-testid="filter-rating${scope}" data-rating="${value}" />
+                        <label class="form-check-label small" for="${id(`rate-${value}`)}">
+                          ${value === 0 ? 'Any rating' : `<span class="stars">${stars(value)}</span> ${value} &amp; up`}
+                        </label>
+                      </div>`,
+                  )
+                  .join('')}
+              </div>
+
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="${id('filter-ship')}" role="switch"
+                       ${freeShipping ? 'checked' : ''}
+                       data-filter="freeShipping" data-testid="filter-free-shipping${scope}" />
+                <label class="form-check-label small" for="${id('filter-ship')}">Free shipping only</label>
+              </div>
+            </div>`
+        }
+
+        function searchView() {
+          const results = filteredProducts()
+          const { query, category, sort } = state.filters
+          const heading = query
+            ? `Results for “${escapeHtml(query)}”`
+            : category
+              ? escapeHtml(categoryById(category).name)
+              : 'All products'
+
+          return `
+            ${breadcrumb([
+              { label: 'Home', href: '#/home' },
+              { label: query ? `Search: ${query}` : category ? categoryById(category).name : 'All products' },
+            ])}
+            <div class="row g-3">
+              <aside class="col-lg-3 d-none d-lg-block">${filterPanel('')}</aside>
+              <div class="col-lg-9">
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div>
+                      <h5 class="mb-0">${heading}</h5>
+                      <span class="text-muted small" data-testid="search-result-count">
+                        ${results.length} product${results.length === 1 ? '' : 's'} found
+                      </span>
+                    </div>
+                    <div class="ms-auto d-flex gap-2">
+                      <button class="btn btn-outline-secondary btn-sm d-lg-none" data-action="open-filters"
+                              data-testid="open-filters">
+                        Filters${activeFilterCount() ? ` (${activeFilterCount()})` : ''}
+                      </button>
+                      <select class="form-select form-select-sm" style="width: auto" data-testid="sort-select"
+                              aria-label="Sort results">
+                        ${[
+                          ['relevance', 'Relevance'],
+                          ['popular', 'Best selling'],
+                          ['price-asc', 'Price: low to high'],
+                          ['price-desc', 'Price: high to low'],
+                          ['rating', 'Top rated'],
+                          ['discount', 'Biggest discount'],
+                        ]
+                          .map(
+                            ([value, label]) =>
+                              `<option value="${value}" ${sort === value ? 'selected' : ''}>${label}</option>`,
+                          )
+                          .join('')}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div data-testid="search-view">${productGrid(results, 'search-grid')}</div>
+              </div>
+            </div>
+
+            <div class="offcanvas offcanvas-start" tabindex="-1" id="filterDrawer" aria-labelledby="filterDrawerLabel">
+              <div class="offcanvas-header">
+                <h5 class="offcanvas-title" id="filterDrawerLabel">Filters</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+              </div>
+              <div class="offcanvas-body" data-testid="filter-drawer-body">${filterPanel('-mobile')}</div>
+            </div>`
+        }
+
+        function productView(productId) {
+          const product = productById(productId)
+
+          if (!product) {
+            return `<div class="empty-state"><span class="icon">🤷</span><p>That product does not exist.</p>
+                    <a class="btn btn-primary btn-sm" href="#/home">Back to home</a></div>`
+          }
+
+          const seller = sellerById(product.sellerId)
+          const selection = state.pdp[productId] || {}
+          const colour = selection.colour ?? (product.colours.length === 1 ? product.colours[0] : null)
+          const size = selection.size ?? (product.sizes.length === 1 ? product.sizes[0] : null)
+          const qty = selection.qty ?? 1
+          const image = selection.image ?? 0
+          const saved = state.wishlist.has(product.id)
+
+          const breakdown = [5, 4, 3, 2, 1].map((value) => ({
+            value,
+            count: product.reviews.filter((review) => review.rating === value).length,
+          }))
+
+          return `
+            ${breadcrumb([
+              { label: 'Home', href: '#/home' },
+              { label: categoryById(product.category).name, href: `#/search?category=${product.category}` },
+              { label: product.name },
+            ])}
+
+            <div class="row g-3" data-testid="pdp-view" data-product="${product.id}">
+              <div class="col-md-5">
+                <div class="bg-white rounded shadow-sm p-3">
+                  <img src="${productImage(product, image)}" alt="${escapeHtml(product.name)}"
+                       class="gallery-main mb-2" data-testid="pdp-image" />
+                  <div class="d-flex gap-2">
+                    ${[0, 1, 2, 3]
+                      .map(
+                        (index) => `
+                          <img src="${productImage(product, index)}" class="thumb" alt="View ${index + 1}"
+                               data-action="pick-image" data-index="${index}" data-product="${product.id}"
+                               aria-pressed="${image === index}" data-testid="pdp-thumb" />`,
+                      )
+                      .join('')}
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-7 col-lg-4">
+                <div class="bg-white rounded shadow-sm p-3 h-100">
+                  <h1 class="h5 mb-2" data-testid="pdp-title">${escapeHtml(product.name)}</h1>
+                  <div class="d-flex align-items-center gap-2 small mb-2 flex-wrap">
+                    <span class="stars">${stars(product.rating)}</span>
+                    <span class="text-muted">${product.rating.toFixed(1)}</span>
+                    <a href="#reviews" class="text-decoration-none">${product.reviewCount.toLocaleString()} ratings</a>
+                    <span class="text-muted">|</span>
+                    <span class="text-muted">${product.sold.toLocaleString()} sold</span>
+                  </div>
+
+                  <div class="bg-light rounded p-3 mb-3">
+                    <div class="d-flex align-items-baseline gap-2 flex-wrap">
+                      <span class="price fs-3" data-testid="pdp-price">${baht(product.price)}</span>
+                      <span class="price-was">${baht(product.wasPrice)}</span>
+                      <span class="discount-badge">-${discountPct(product)}%</span>
+                    </div>
+                    ${product.flashSale ? '<div class="small text-danger mt-1">⚡ Flash sale price</div>' : ''}
+                  </div>
+
+                  ${
+                    product.colours.length
+                      ? `<div class="mb-3">
+                           <div class="small fw-semibold mb-1">
+                             Colour${colour ? `: <span class="text-muted fw-normal" data-testid="pdp-colour-selected">${escapeHtml(colour)}</span>` : ''}
+                           </div>
+                           <div class="d-flex flex-wrap gap-2">
+                             ${product.colours
+                               .map(
+                                 (option) => `
+                                   <button class="variation-btn" data-action="pick-colour" data-value="${escapeHtml(option)}"
+                                           data-product="${product.id}" aria-pressed="${colour === option}"
+                                           data-testid="pdp-colour-option">${escapeHtml(option)}</button>`,
+                               )
+                               .join('')}
+                           </div>
+                         </div>`
+                      : ''
+                  }
+
+                  ${
+                    product.sizes.length
+                      ? `<div class="mb-3">
+                           <div class="small fw-semibold mb-1">
+                             Size${size ? `: <span class="text-muted fw-normal" data-testid="pdp-size-selected">${escapeHtml(size)}</span>` : ''}
+                           </div>
+                           <div class="d-flex flex-wrap gap-2">
+                             ${product.sizes
+                               .map((option) => {
+                                 const out = product.soldOut.includes(option)
+                                 return `<button class="variation-btn" data-action="pick-size" data-value="${escapeHtml(option)}"
+                                                data-product="${product.id}" aria-pressed="${size === option}"
+                                                ${out ? 'disabled title="Sold out"' : ''}
+                                                data-testid="pdp-size-option">${escapeHtml(option)}</button>`
+                               })
+                               .join('')}
+                           </div>
+                         </div>`
+                      : ''
+                  }
+
+                  <div class="mb-3">
+                    <div class="small fw-semibold mb-1">Quantity</div>
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="btn-group">
+                        <button class="btn btn-outline-secondary btn-sm" data-action="qty" data-delta="-1"
+                                data-product="${product.id}" data-testid="pdp-qty-dec"
+                                ${qty <= 1 ? 'disabled' : ''} aria-label="Decrease quantity">−</button>
+                        <span class="btn btn-outline-secondary btn-sm disabled text-dark px-3"
+                              data-testid="pdp-qty">${qty}</span>
+                        <button class="btn btn-outline-secondary btn-sm" data-action="qty" data-delta="1"
+                                data-product="${product.id}" data-testid="pdp-qty-inc"
+                                ${qty >= product.stock ? 'disabled' : ''} aria-label="Increase quantity">+</button>
+                      </div>
+                      <span class="text-muted small" data-testid="pdp-stock">${product.stock} pieces available</span>
+                    </div>
+                  </div>
+
+                  <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" data-action="add-to-cart" data-product="${product.id}"
+                            data-testid="pdp-add-to-cart">Add to cart</button>
+                    <button class="btn btn-primary" data-action="buy-now" data-product="${product.id}"
+                            data-testid="pdp-buy-now">Buy now</button>
+                    <button class="btn btn-link text-decoration-none" data-action="toggle-wishlist"
+                            data-product="${product.id}" aria-pressed="${saved}" data-testid="pdp-wishlist">
+                      ${saved ? '❤️ Saved to wishlist' : '🤍 Add to wishlist'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-lg-3">
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="rounded-circle bg-brand text-white d-flex align-items-center justify-content-center"
+                         style="width: 40px; height: 40px">${escapeHtml(seller.name[0])}</div>
+                    <div class="small">
+                      <div class="fw-semibold" data-testid="pdp-seller">${escapeHtml(seller.name)}</div>
+                      ${seller.badge ? `<span class="badge bg-danger">${seller.badge}</span>` : ''}
+                      <div class="text-muted">${seller.rating} ★ · ships in ${seller.shipsIn}</div>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" data-action="chat-seller">Chat</button>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" data-action="follow-seller">Follow</button>
+                  </div>
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3 small">
+                  <div class="d-flex gap-2 mb-2">
+                    <span>🚚</span>
+                    <div>
+                      <div class="fw-semibold">Delivery</div>
+                      <div class="text-muted">${product.freeShipping ? 'Free standard shipping' : `Standard ${baht(30)}`} · 3–5 days</div>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2 mb-2">
+                    <span>↩️</span>
+                    <div>
+                      <div class="fw-semibold">Returns</div>
+                      <div class="text-muted">${product.specs.Warranty}, change of mind accepted</div>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2">
+                    <span>🛡️</span>
+                    <div>
+                      <div class="fw-semibold">Buyer protection</div>
+                      <div class="text-muted">Refund if the item is not as described</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+              <div class="col-lg-5">
+                <div class="bg-white rounded shadow-sm p-3">
+                  <h6 class="mb-3">Specifications</h6>
+                  <table class="table table-sm mb-0">
+                    <tbody>
+                      ${Object.entries(product.specs)
+                        .map(
+                          ([key, value]) =>
+                            `<tr><th scope="row" class="fw-normal text-muted small" style="width: 40%">${escapeHtml(key)}</th>
+                             <td class="small">${escapeHtml(value)}</td></tr>`,
+                        )
+                        .join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="col-lg-7">
+                <div class="bg-white rounded shadow-sm p-3" id="reviews">
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Ratings &amp; reviews</h6>
+                    <button class="btn btn-sm btn-outline-primary" data-action="open-review"
+                            data-product="${product.id}" data-testid="pdp-write-review">Write a review</button>
+                  </div>
+
+                  <div class="row g-3 align-items-center mb-3">
+                    <div class="col-4 text-center border-end">
+                      <div class="display-6 text-brand fw-bold">${product.rating.toFixed(1)}</div>
+                      <div class="stars">${stars(product.rating)}</div>
+                      <div class="text-muted small">${product.reviews.length} written</div>
+                    </div>
+                    <div class="col-8">
+                      ${breakdown
+                        .map(
+                          (row) => `
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                              <span class="small text-muted" style="width: 2.2rem">${row.value} ★</span>
+                              <div class="progress flex-grow-1 rating-bar">
+                                <div class="progress-bar bg-warning"
+                                     style="width: ${product.reviews.length ? (row.count / product.reviews.length) * 100 : 0}%"></div>
+                              </div>
+                              <span class="small text-muted" style="width: 1.5rem">${row.count}</span>
+                            </div>`,
+                        )
+                        .join('')}
+                    </div>
+                  </div>
+
+                  <ul class="list-unstyled mb-0" data-testid="pdp-review-list">
+                    ${product.reviews
+                      .map(
+                        (review) => `
+                          <li class="border-top py-2" data-testid="pdp-review-item">
+                            <div class="d-flex justify-content-between">
+                              <span class="stars">${stars(review.rating)}</span>
+                              <span class="text-muted small">${escapeHtml(review.date)}</span>
+                            </div>
+                            <div class="small text-muted">${escapeHtml(review.author)}</div>
+                            <div class="small">${escapeHtml(review.text)}</div>
+                          </li>`,
+                      )
+                      .join('')}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded shadow-sm p-3 mt-3">
+              <h6 class="mb-3">You may also like</h6>
+              ${productGrid(
+                PRODUCTS.filter((item) => item.category === product.category && item.id !== product.id).slice(0, 6),
+                'related-grid',
+              )}
+            </div>`
+        }
+
+        function cartView() {
+          if (state.cart.length === 0) {
+            return `
+              <div class="bg-white rounded shadow-sm empty-state" data-testid="cart-empty">
+                <span class="icon">🛒</span>
+                <p class="mb-3">Your cart is empty.</p>
+                <a class="btn btn-primary" href="#/home">Start shopping</a>
+              </div>`
+          }
+
+          const figures = totals()
+          const allSelected = state.cart.every((line) => line.selected)
+
+          // Lazada groups the cart by seller, and so does this.
+          const bySeller = new Map()
+          for (const line of state.cart) {
+            const sellerId = productById(line.productId).sellerId
+            if (!bySeller.has(sellerId)) bySeller.set(sellerId, [])
+            bySeller.get(sellerId).push(line)
+          }
+
+          return `
+            ${breadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Shopping cart' }])}
+            <div class="row g-3" data-testid="cart-view">
+              <div class="col-lg-8">
+                <div class="bg-white rounded shadow-sm p-3 mb-3 d-flex align-items-center">
+                  <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" id="select-all" ${allSelected ? 'checked' : ''}
+                           data-testid="cart-select-all" />
+                    <label class="form-check-label small fw-semibold" for="select-all">
+                      Select all (${state.cart.length} item${state.cart.length === 1 ? '' : 's'})
+                    </label>
+                  </div>
+                  <button class="btn btn-link btn-sm text-danger text-decoration-none ms-auto"
+                          data-action="remove-selected" data-testid="cart-remove-selected">Delete selected</button>
+                </div>
+
+                ${[...bySeller.entries()]
+                  .map(([sellerId, lines]) => {
+                    const seller = sellerById(sellerId)
+                    return `
+                      <div class="bg-white rounded shadow-sm mb-3">
+                        <div class="seller-strip px-3 py-2 small fw-semibold d-flex align-items-center gap-2">
+                          <span>🏪 ${escapeHtml(seller.name)}</span>
+                          ${seller.badge ? `<span class="badge bg-danger">${seller.badge}</span>` : ''}
+                        </div>
+                        ${lines
+                          .map((line) => {
+                            const product = productById(line.productId)
+                            const key = cartLineKey(line)
+                            const variation = [line.colour, line.size].filter(Boolean).join(' / ')
+                            return `
+                              <div class="d-flex gap-2 gap-md-3 p-3 border-top" data-testid="cart-item" data-key="${escapeHtml(key)}">
+                                <div class="form-check pt-1">
+                                  <input class="form-check-input" type="checkbox" ${line.selected ? 'checked' : ''}
+                                         data-action="toggle-line" data-key="${escapeHtml(key)}"
+                                         data-testid="cart-item-select" aria-label="Select ${escapeHtml(product.name)}" />
+                                </div>
+                                <a href="#/product/${product.id}">
+                                  <img src="${productImage(product)}" alt="" width="80" height="80"
+                                       class="rounded" style="object-fit: cover" />
+                                </a>
+                                <div class="flex-grow-1 min-w-0">
+                                  <a href="#/product/${product.id}" class="text-decoration-none">
+                                    <div class="product-title">${escapeHtml(product.name)}</div>
+                                  </a>
+                                  ${variation ? `<div class="text-muted" style="font-size: 0.75rem">${escapeHtml(variation)}</div>` : ''}
+                                  <div class="price mt-1" data-testid="cart-item-price">${baht(product.price)}</div>
+                                  <div class="d-flex align-items-center gap-2 mt-2">
+                                    <div class="btn-group btn-group-sm">
+                                      <button class="btn btn-outline-secondary" data-action="line-qty" data-delta="-1"
+                                              data-key="${escapeHtml(key)}" data-testid="cart-item-dec"
+                                              aria-label="Decrease quantity">−</button>
+                                      <span class="btn btn-outline-secondary disabled text-dark"
+                                            data-testid="cart-item-qty">${line.qty}</span>
+                                      <button class="btn btn-outline-secondary" data-action="line-qty" data-delta="1"
+                                              data-key="${escapeHtml(key)}" data-testid="cart-item-inc"
+                                              ${line.qty >= product.stock ? 'disabled' : ''}
+                                              aria-label="Increase quantity">+</button>
+                                    </div>
+                                    <button class="btn btn-link btn-sm text-muted text-decoration-none"
+                                            data-action="line-wishlist" data-key="${escapeHtml(key)}">Save</button>
+                                    <button class="btn btn-link btn-sm text-danger text-decoration-none"
+                                            data-action="remove-line" data-key="${escapeHtml(key)}"
+                                            data-testid="cart-item-remove">Delete</button>
+                                  </div>
+                                </div>
+                                <div class="text-end d-none d-md-block">
+                                  <div class="fw-semibold" data-testid="cart-item-subtotal">${baht(lineSubtotal(line))}</div>
+                                </div>
+                              </div>`
+                          })
+                          .join('')}
+                      </div>`
+                  })
+                  .join('')}
+              </div>
+
+              <div class="col-lg-4">
+                <div class="bg-white rounded shadow-sm p-3 sticky-summary">
+                  <h6 class="mb-3">Order summary</h6>
+
+                  <div class="mb-3">
+                    <label class="form-label small fw-semibold" for="voucher-input">Voucher code</label>
+                    ${
+                      state.voucher
+                        ? `<div class="d-flex align-items-center gap-2">
+                             <span class="voucher-chip" data-testid="cart-voucher-applied">${escapeHtml(state.voucher.code)}</span>
+                             <span class="small text-muted flex-grow-1">${escapeHtml(state.voucher.label)}</span>
+                             <button class="btn btn-link btn-sm p-0 text-danger text-decoration-none"
+                                     data-action="remove-voucher" data-testid="cart-remove-voucher">Remove</button>
+                           </div>`
+                        : `<div class="input-group input-group-sm">
+                             <input class="form-control" id="voucher-input" placeholder="e.g. LAZ50"
+                                    data-testid="cart-voucher-input" />
+                             <button class="btn btn-outline-primary" data-action="apply-voucher"
+                                     data-testid="cart-apply-voucher">Apply</button>
+                           </div>
+                           <div class="form-text">Try <code>LAZ50</code>, <code>SAVE10</code> or <code>FREESHIP</code>.</div>`
+                    }
+                    <div class="text-danger small mt-1 d-none" data-testid="cart-voucher-error"></div>
+                  </div>
+
+                  ${summaryRows(figures)}
+
+                  <button class="btn btn-primary w-100 mt-3" data-action="go-checkout"
+                          data-testid="cart-checkout" ${figures.count === 0 ? 'disabled' : ''}>
+                    Proceed to checkout (${figures.count})
+                  </button>
+                  ${
+                    figures.count === 0
+                      ? '<div class="form-text text-center">Select at least one item to check out.</div>'
+                      : ''
+                  }
+                </div>
+              </div>
+            </div>`
+        }
+
+        function checkoutView() {
+          const lines = selectedLines()
+
+          if (lines.length === 0) {
+            return `
+              <div class="bg-white rounded shadow-sm empty-state" data-testid="checkout-empty">
+                <span class="icon">🧾</span>
+                <p class="mb-3">Nothing selected to check out.</p>
+                <a class="btn btn-primary" href="#/cart">Back to cart</a>
+              </div>`
+          }
+
+          const figures = totals(lines)
+          const address = state.addresses.find((item) => item.id === state.selectedAddressId)
+
+          return `
+            ${breadcrumb([
+              { label: 'Home', href: '#/home' },
+              { label: 'Cart', href: '#/cart' },
+              { label: 'Checkout' },
+            ])}
+            <div class="row g-3" data-testid="checkout-view">
+              <div class="col-lg-8">
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0">📍 Delivery address</h6>
+                    <button class="btn btn-sm btn-outline-primary" data-action="open-address"
+                            data-testid="checkout-add-address">Add new</button>
+                  </div>
+                  ${
+                    state.addresses.length === 0
+                      ? `<p class="text-danger small mb-0" data-testid="checkout-no-address">
+                           Add a delivery address to continue.
+                         </p>`
+                      : state.addresses
+                          .map(
+                            (item) => `
+                              <div class="form-check border rounded p-2 ps-4 mb-2 ${item.id === state.selectedAddressId ? 'border-warning bg-light' : ''}">
+                                <input class="form-check-input" type="radio" name="checkout-address"
+                                       id="addr-opt-${item.id}" value="${item.id}"
+                                       ${item.id === state.selectedAddressId ? 'checked' : ''}
+                                       data-testid="checkout-address" data-address="${item.id}" />
+                                <label class="form-check-label w-100" for="addr-opt-${item.id}">
+                                  <span class="fw-semibold small">${escapeHtml(item.name)}</span>
+                                  <span class="badge bg-secondary ms-1">${escapeHtml(item.label)}</span>
+                                  <span class="text-muted small ms-1">${escapeHtml(item.phone)}</span>
+                                  <div class="small text-muted">
+                                    ${escapeHtml(item.line)}, ${escapeHtml(item.city)} ${escapeHtml(item.postcode)}
+                                  </div>
+                                </label>
+                              </div>`,
+                          )
+                          .join('')
+                  }
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <h6 class="mb-2">📦 Items (${figures.count})</h6>
+                  ${lines
+                    .map((line) => {
+                      const product = productById(line.productId)
+                      const variation = [line.colour, line.size].filter(Boolean).join(' / ')
+                      return `
+                        <div class="d-flex gap-2 align-items-center py-2 border-top" data-testid="checkout-item">
+                          <img src="${productImage(product)}" alt="" width="52" height="52" class="rounded"
+                               style="object-fit: cover" />
+                          <div class="flex-grow-1">
+                            <div class="product-title">${escapeHtml(product.name)}</div>
+                            <div class="text-muted" style="font-size: 0.75rem">
+                              ${variation ? `${escapeHtml(variation)} · ` : ''}Qty ${line.qty}
+                            </div>
+                          </div>
+                          <div class="small fw-semibold">${baht(lineSubtotal(line))}</div>
+                        </div>`
+                    })
+                    .join('')}
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <h6 class="mb-2">🚚 Shipping option</h6>
+                  ${SHIPPING_OPTIONS.map((option) => {
+                    const free = option.id === 'standard' && figures.subtotal >= 1000
+                    return `
+                      <div class="form-check border rounded p-2 ps-4 mb-2">
+                        <input class="form-check-input" type="radio" name="checkout-shipping"
+                               id="ship-${option.id}" value="${option.id}"
+                               ${state.shippingId === option.id ? 'checked' : ''}
+                               data-testid="checkout-shipping" data-shipping="${option.id}" />
+                        <label class="form-check-label w-100 small" for="ship-${option.id}">
+                          <span class="fw-semibold">${option.name}</span>
+                          <span class="text-muted">· ${option.eta}</span>
+                          <span class="float-end fw-semibold">${free ? 'Free' : baht(option.fee)}</span>
+                        </label>
+                      </div>`
+                  }).join('')}
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3">
+                  <h6 class="mb-2">💳 Payment method</h6>
+                  ${PAYMENT_METHODS.map(
+                    (method) => `
+                      <div class="form-check border rounded p-2 ps-4 mb-2">
+                        <input class="form-check-input" type="radio" name="checkout-payment"
+                               id="pay-${method.id}" value="${method.id}"
+                               ${state.paymentId === method.id ? 'checked' : ''}
+                               data-testid="checkout-payment" data-payment="${method.id}" />
+                        <label class="form-check-label w-100 small" for="pay-${method.id}">
+                          <span class="fw-semibold">${method.name}</span>
+                          <div class="text-muted">${method.note}</div>
+                        </label>
+                      </div>`,
+                  ).join('')}
+
+                  ${
+                    state.paymentId === 'card'
+                      ? `<div class="row g-2 mt-2 p-2 bg-light rounded" data-testid="checkout-card-fields">
+                           <div class="col-12">
+                             <input class="form-control form-control-sm" placeholder="Card number"
+                                    inputmode="numeric" value="${escapeHtml(state.card.number)}"
+                                    data-card="number" data-testid="card-number" aria-label="Card number" />
+                           </div>
+                           <div class="col-12">
+                             <input class="form-control form-control-sm" placeholder="Name on card"
+                                    value="${escapeHtml(state.card.name)}"
+                                    data-card="name" data-testid="card-name" aria-label="Name on card" />
+                           </div>
+                           <div class="col-6">
+                             <input class="form-control form-control-sm" placeholder="MM/YY"
+                                    value="${escapeHtml(state.card.expiry)}"
+                                    data-card="expiry" data-testid="card-expiry" aria-label="Card expiry" />
+                           </div>
+                           <div class="col-6">
+                             <input class="form-control form-control-sm" placeholder="CVV" inputmode="numeric"
+                                    value="${escapeHtml(state.card.cvv)}"
+                                    data-card="cvv" data-testid="card-cvv" aria-label="Card CVV" />
+                           </div>
+                           <div class="col-12">
+                             <div class="form-text">Prototype only — nothing is transmitted or stored.</div>
+                           </div>
+                         </div>`
+                      : ''
+                  }
+                </div>
+              </div>
+
+              <div class="col-lg-4">
+                <div class="bg-white rounded shadow-sm p-3 sticky-summary">
+                  <h6 class="mb-3">Order summary</h6>
+                  ${
+                    state.voucher
+                      ? `<div class="mb-2"><span class="voucher-chip">${escapeHtml(state.voucher.code)}</span>
+                           <span class="small text-muted ms-1">${escapeHtml(state.voucher.label)}</span></div>`
+                      : ''
+                  }
+                  ${summaryRows(figures)}
+                  <div class="small text-muted mt-2">
+                    Delivering to
+                    <span data-testid="checkout-address-summary">
+                      ${address ? escapeHtml(`${address.city} ${address.postcode}`) : '—'}
+                    </span>
+                  </div>
+                  <button class="btn btn-primary w-100 mt-3" data-action="place-order"
+                          data-testid="checkout-place-order">Place order · ${baht(figures.total)}</button>
+                  <div class="text-danger small mt-2 d-none" data-testid="checkout-error"></div>
+                  <a href="#/cart" class="btn btn-link w-100 text-decoration-none btn-sm mt-1">Back to cart</a>
+                </div>
+              </div>
+            </div>`
+        }
+
+        function orderTimeline(order) {
+          if (order.status === 'cancelled') {
+            return `<ul class="timeline" data-testid="order-timeline">
+                      <li class="done">Order placed · ${escapeHtml(order.placedAt)}</li>
+                      <li class="current text-danger">Order cancelled</li>
+                    </ul>`
+          }
+
+          const currentIndex = ORDER_FLOW.indexOf(order.status)
+          const labels = {
+            to_ship: 'Order placed — seller preparing your parcel',
+            shipping: 'Parcel handed to the courier',
+            to_receive: 'Out for delivery',
+            completed: 'Delivered',
+          }
+
+          return `
+            <ul class="timeline" data-testid="order-timeline">
+              ${ORDER_FLOW.map((status, index) => {
+                const className = index < currentIndex ? 'done' : index === currentIndex ? 'current' : ''
+                return `<li class="${className}" data-status="${status}">
+                          <div class="${index <= currentIndex ? 'fw-semibold' : 'text-muted'}">${labels[status]}</div>
+                          ${index === currentIndex ? `<div class="text-muted small">${escapeHtml(order.updatedAt)}</div>` : ''}
+                        </li>`
+              }).join('')}
+            </ul>`
+        }
+
+        function orderSuccessView(orderId) {
+          const order = state.orders.find((item) => item.id === orderId)
+
+          if (!order) {
+            return `<div class="empty-state"><span class="icon">🤷</span><p>Order not found.</p>
+                    <a class="btn btn-primary btn-sm" href="#/orders">My orders</a></div>`
+          }
+
+          return `
+            <div class="bg-white rounded shadow-sm p-4 text-center mb-3" data-testid="order-success-view">
+              <div style="font-size: 3.2rem">✅</div>
+              <h4 class="fw-bold">Thank you, your order is placed</h4>
+              <p class="text-muted mb-1">
+                Order <strong data-testid="order-success-id">${escapeHtml(order.id)}</strong>
+                · ${baht(order.total)} · ${escapeHtml(order.paymentLabel)}
+              </p>
+              <p class="text-muted small">
+                Estimated delivery ${escapeHtml(order.eta)} to ${escapeHtml(order.address.city)}
+                ${escapeHtml(order.address.postcode)}
+              </p>
+              <div class="d-flex gap-2 justify-content-center flex-wrap mt-3">
+                <a href="#/order/${order.id}" class="btn btn-primary" data-testid="order-success-track">Track order</a>
+                <a href="#/orders" class="btn btn-outline-primary">My orders</a>
+                <a href="#/home" class="btn btn-link text-decoration-none">Continue shopping</a>
+              </div>
+            </div>`
+        }
+
+        function orderDetailView(orderId) {
+          const order = state.orders.find((item) => item.id === orderId)
+
+          if (!order) {
+            return `<div class="empty-state"><span class="icon">🤷</span><p>Order not found.</p>
+                    <a class="btn btn-primary btn-sm" href="#/orders">My orders</a></div>`
+          }
+
+          return `
+            ${breadcrumb([
+              { label: 'Home', href: '#/home' },
+              { label: 'My orders', href: '#/orders' },
+              { label: order.id },
+            ])}
+            <div class="row g-3" data-testid="order-detail-view" data-order="${order.id}">
+              <div class="col-lg-7">
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                      <h6 class="mb-0">Order ${escapeHtml(order.id)}</h6>
+                      <span class="text-muted small">Placed ${escapeHtml(order.placedAt)}</span>
+                    </div>
+                    <span class="badge ${order.status === 'cancelled' ? 'bg-danger' : order.status === 'completed' ? 'bg-success' : 'bg-warning text-dark'}"
+                          data-testid="order-status">${STATUS_LABELS[order.status]}</span>
+                  </div>
+                  ${orderTimeline(order)}
+
+                  <div class="d-flex gap-2 flex-wrap mt-2">
+                    ${
+                      order.status === 'to_ship'
+                        ? `<button class="btn btn-outline-danger btn-sm" data-action="cancel-order"
+                                   data-order="${order.id}" data-testid="order-cancel">Cancel order</button>`
+                        : ''
+                    }
+                    ${
+                      order.status === 'to_receive'
+                        ? `<button class="btn btn-primary btn-sm" data-action="confirm-receipt"
+                                   data-order="${order.id}" data-testid="order-confirm-receipt">
+                             Confirm receipt
+                           </button>`
+                        : ''
+                    }
+                    ${
+                      ORDER_FLOW.indexOf(order.status) > -1 && order.status !== 'completed'
+                        ? `<button class="btn btn-outline-secondary btn-sm" data-action="advance-order"
+                                   data-order="${order.id}" data-testid="order-advance">
+                             Advance status (demo)
+                           </button>`
+                        : ''
+                    }
+                    ${
+                      order.status === 'completed' || order.status === 'cancelled'
+                        ? `<button class="btn btn-outline-primary btn-sm" data-action="reorder"
+                                   data-order="${order.id}" data-testid="order-reorder">Buy again</button>`
+                        : ''
+                    }
+                  </div>
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3">
+                  <h6 class="mb-2">Items</h6>
+                  ${order.items
+                    .map(
+                      (item) => `
+                        <div class="d-flex gap-2 align-items-center py-2 border-top" data-testid="order-item">
+                          <img src="${productImage(productById(item.productId))}" alt="" width="52" height="52"
+                               class="rounded" style="object-fit: cover" />
+                          <div class="flex-grow-1">
+                            <a href="#/product/${item.productId}" class="text-decoration-none">
+                              <div class="product-title">${escapeHtml(item.name)}</div>
+                            </a>
+                            <div class="text-muted" style="font-size: 0.75rem">
+                              ${item.variation ? `${escapeHtml(item.variation)} · ` : ''}Qty ${item.qty}
+                            </div>
+                          </div>
+                          <div class="text-end">
+                            <div class="small fw-semibold">${baht(item.price * item.qty)}</div>
+                            ${
+                              order.status === 'completed'
+                                ? `<button class="btn btn-link btn-sm p-0 text-decoration-none"
+                                           data-action="open-review" data-product="${item.productId}"
+                                           data-testid="order-item-review">Review</button>`
+                                : ''
+                            }
+                          </div>
+                        </div>`,
+                    )
+                    .join('')}
+                </div>
+              </div>
+
+              <div class="col-lg-5">
+                <div class="bg-white rounded shadow-sm p-3 mb-3">
+                  <h6 class="mb-2">Delivery address</h6>
+                  <div class="small">
+                    <div class="fw-semibold">${escapeHtml(order.address.name)} · ${escapeHtml(order.address.phone)}</div>
+                    <div class="text-muted">
+                      ${escapeHtml(order.address.line)}, ${escapeHtml(order.address.city)}
+                      ${escapeHtml(order.address.postcode)}
+                    </div>
+                  </div>
+                  <hr />
+                  <div class="small">
+                    <div><span class="text-muted">Shipping:</span> ${escapeHtml(order.shippingLabel)}</div>
+                    <div><span class="text-muted">Payment:</span> ${escapeHtml(order.paymentLabel)}</div>
+                    <div><span class="text-muted">Estimated delivery:</span> ${escapeHtml(order.eta)}</div>
+                  </div>
+                </div>
+
+                <div class="bg-white rounded shadow-sm p-3">
+                  <h6 class="mb-2">Payment summary</h6>
+                  <div class="d-flex justify-content-between small mb-1">
+                    <span>Items</span><span>${baht(order.subtotal)}</span>
+                  </div>
+                  <div class="d-flex justify-content-between small mb-1">
+                    <span>Shipping</span><span>${order.shippingFee === 0 ? 'Free' : baht(order.shippingFee)}</span>
+                  </div>
+                  ${
+                    order.discount > 0
+                      ? `<div class="d-flex justify-content-between small mb-1 text-success">
+                           <span>Voucher ${escapeHtml(order.voucherCode)}</span><span>-${baht(order.discount)}</span>
+                         </div>`
+                      : ''
+                  }
+                  <hr class="my-2" />
+                  <div class="d-flex justify-content-between align-items-baseline">
+                    <span class="fw-semibold">Total paid</span>
+                    <span class="price fs-5" data-testid="order-total">${baht(order.total)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>`
+        }
+
+        function ordersView() {
+          const tabs = [
+            ['all', 'All'],
+            ['to_ship', 'To ship'],
+            ['shipping', 'Shipping'],
+            ['to_receive', 'To receive'],
+            ['completed', 'Completed'],
+            ['cancelled', 'Cancelled'],
+          ]
+
+          const orders =
+            state.ordersTab === 'all'
+              ? state.orders
+              : state.orders.filter((order) => order.status === state.ordersTab)
+
+          return `
+            ${breadcrumb([{ label: 'Home', href: '#/home' }, { label: 'My orders' }])}
+            <div class="bg-white rounded shadow-sm p-3" data-testid="orders-view">
+              <h5 class="mb-3">My orders</h5>
+              <ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto" data-testid="orders-tabs">
+                ${tabs
+                  .map(
+                    ([id, label]) => `
+                      <li class="nav-item">
+                        <button class="nav-link ${state.ordersTab === id ? 'active' : ''}" data-action="orders-tab"
+                                data-tab="${id}" data-testid="orders-tab">
+                          ${label}
+                          ${
+                            id !== 'all'
+                              ? `<span class="badge bg-secondary ms-1">${state.orders.filter((order) => order.status === id).length}</span>`
+                              : `<span class="badge bg-secondary ms-1">${state.orders.length}</span>`
+                          }
+                        </button>
+                      </li>`,
+                  )
+                  .join('')}
+              </ul>
+
+              ${
+                orders.length === 0
+                  ? `<div class="empty-state" data-testid="orders-empty">
+                       <span class="icon">📦</span>
+                       <p class="mb-3">No orders here yet.</p>
+                       <a class="btn btn-primary btn-sm" href="#/home">Start shopping</a>
+                     </div>`
+                  : orders
+                      .map(
+                        (order) => `
+                          <div class="border rounded p-3 mb-2" data-testid="order-row" data-order="${order.id}">
+                            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                              <div>
+                                <a href="#/order/${order.id}" class="text-decoration-none fw-semibold">
+                                  ${escapeHtml(order.id)}
+                                </a>
+                                <span class="text-muted small ms-2">${escapeHtml(order.placedAt)}</span>
+                              </div>
+                              <span class="badge ${order.status === 'cancelled' ? 'bg-danger' : order.status === 'completed' ? 'bg-success' : 'bg-warning text-dark'}">
+                                ${STATUS_LABELS[order.status]}
+                              </span>
+                            </div>
+                            <div class="d-flex gap-2 align-items-center">
+                              ${order.items
+                                .slice(0, 3)
+                                .map(
+                                  (item) =>
+                                    `<img src="${productImage(productById(item.productId))}" alt="" width="44"
+                                          height="44" class="rounded" style="object-fit: cover" />`,
+                                )
+                                .join('')}
+                              <div class="small text-muted">
+                                ${order.items.length} item${order.items.length === 1 ? '' : 's'}
+                              </div>
+                              <div class="ms-auto text-end">
+                                <div class="price">${baht(order.total)}</div>
+                                <a href="#/order/${order.id}" class="btn btn-sm btn-outline-primary mt-1">View</a>
+                              </div>
+                            </div>
+                          </div>`,
+                      )
+                      .join('')
+              }
+            </div>`
+        }
+
+        function wishlistView() {
+          const items = PRODUCTS.filter((product) => state.wishlist.has(product.id))
+
+          return `
+            ${breadcrumb([{ label: 'Home', href: '#/home' }, { label: 'Wishlist' }])}
+            <div class="bg-white rounded shadow-sm p-3" data-testid="wishlist-view">
+              <h5 class="mb-3">My wishlist (${items.length})</h5>
+              ${
+                items.length === 0
+                  ? `<div class="empty-state" data-testid="wishlist-empty">
+                       <span class="icon">❤️</span>
+                       <p class="mb-3">Nothing saved yet. Tap the heart on any product.</p>
+                       <a class="btn btn-primary btn-sm" href="#/home">Browse products</a>
+                     </div>`
+                  : productGrid(items, 'wishlist-grid')
+              }
+            </div>`
+        }
+
+        /* ── Router ─────────────────────────────────────────────────────── */
+
+        function parseHash() {
+          const raw = location.hash.replace(/^#\/?/, '') || 'home'
+          const [path, queryString] = raw.split('?')
+          const segments = path.split('/').filter(Boolean)
+          const query = Object.fromEntries(new URLSearchParams(queryString || ''))
+
+          switch (segments[0]) {
+            case 'product':
+              return { name: 'product', params: { id: segments[1] } }
+            case 'cart':
+              return { name: 'cart', params: {} }
+            case 'checkout':
+              return { name: 'checkout', params: {} }
+            case 'success':
+              return { name: 'success', params: { id: segments[1] } }
+            case 'order':
+              return { name: 'order', params: { id: segments[1] } }
+            case 'orders':
+              return { name: 'orders', params: {} }
+            case 'wishlist':
+              return { name: 'wishlist', params: {} }
+            case 'search':
+              return { name: 'search', params: query }
+            default:
+              return { name: 'home', params: {} }
+          }
+        }
+
+        const VIEWS = {
+          home: homeView,
+          search: searchView,
+          product: (params) => productView(params.id),
+          cart: cartView,
+          checkout: checkoutView,
+          success: (params) => orderSuccessView(params.id),
+          order: (params) => orderDetailView(params.id),
+          orders: ordersView,
+          wishlist: wishlistView,
+        }
+
+        function render() {
+          const { name, params } = state.route
+
+          $('#view').innerHTML = VIEWS[name](params)
+
+          // Header and nav chrome that lives outside the routed view.
+          const cartBadge = $('[data-testid="mkt-cart-badge"]')
+          const count = cartCount()
+          cartBadge.textContent = count
+          cartBadge.classList.toggle('d-none', count === 0)
+
+          const wishlistBadge = $('[data-testid="mkt-wishlist-badge"]')
+          wishlistBadge.textContent = state.wishlist.size
+          wishlistBadge.classList.toggle('d-none', state.wishlist.size === 0)
+
+          $('[data-testid="mkt-account-label"]').textContent = state.user ? state.user.name : 'Login'
+          $('[data-testid="topbar-user"]').textContent = state.user ? `Hi, ${state.user.name}` : 'Guest'
+
+          $$('[data-nav]').forEach((link) => {
+            link.classList.toggle('active', link.dataset.nav === name)
+          })
+
+          $$('[data-testid="mkt-catnav"] .nav-link').forEach((link) => {
+            link.classList.toggle(
+              'active',
+              name === 'search' && link.dataset.category === state.filters.category,
+            )
+          })
+
+          // Keep the header search box in step with the filter state.
+          const searchInput = $('[data-testid="mkt-search-input"]')
+          if (document.activeElement !== searchInput) {
+            searchInput.value = state.filters.query
+          }
+
+          updateCountdown()
+          window.scrollTo({ top: 0, behavior: 'instant' })
+        }
+
+        function navigate(hash) {
+          if (location.hash === hash) {
+            state.route = parseHash()
+            render()
+          } else {
+            location.hash = hash
+          }
+        }
+
+        /* ── Flash sale countdown ───────────────────────────────────────── */
+
+        function updateCountdown() {
+          const target = $('[data-countdown]')
+          if (!target) return
+
+          const remaining = Math.max(0, state.flashEndsAt - Date.now())
+          const hours = Math.floor(remaining / 3_600_000)
+          const minutes = Math.floor((remaining % 3_600_000) / 60_000)
+          const seconds = Math.floor((remaining % 60_000) / 1000)
+
+          target.innerHTML = [hours, minutes, seconds]
+            .map((part) => `<span class="countdown-box">${String(part).padStart(2, '0')}</span>`)
+            .join('<span class="fw-bold">:</span>')
+        }
+
+        setInterval(updateCountdown, 1000)
+
+        /* ── Actions ────────────────────────────────────────────────────── */
+
+        /** Reads the PDP selection, refusing to continue if a variation is unpicked. */
+        function resolveSelection(productId) {
+          const product = productById(productId)
+          const selection = state.pdp[productId] || {}
+          const colour = selection.colour ?? (product.colours.length <= 1 ? product.colours[0] : null)
+          const size = selection.size ?? (product.sizes.length <= 1 ? product.sizes[0] : null)
+
+          if (product.colours.length > 1 && !colour) {
+            return { error: 'Choose a colour first.' }
+          }
+          if (product.sizes.length > 1 && !size) {
+            return { error: 'Choose a size first.' }
+          }
+
+          return { colour, size, qty: selection.qty ?? 1 }
+        }
+
+        function requireLogin(message) {
+          if (state.user) return true
+          toast(message, 'dark')
+          bootstrap.Modal.getOrCreateInstance($('#loginModal')).show()
+          return false
+        }
+
+        function placeOrder() {
+          const errorBox = $('[data-testid="checkout-error"]')
+          const fail = (message) => {
+            errorBox.textContent = message
+            errorBox.classList.remove('d-none')
+            toast(message, 'danger')
+          }
+
+          const lines = selectedLines()
+          if (lines.length === 0) return fail('Your basket is empty.')
+
+          const address = state.addresses.find((item) => item.id === state.selectedAddressId)
+          if (!address) return fail('Choose a delivery address.')
+
+          if (state.paymentId === 'card') {
+            const { number, name, expiry, cvv } = state.card
+            const digits = number.replace(/\D/g, '')
+            if (digits.length < 13 || !name.trim() || !/^\d{2}\/?\d{2}$/.test(expiry.trim()) || cvv.trim().length < 3) {
+              return fail('Complete the card details — 13+ digit number, name, MM/YY and CVV.')
+            }
+          }
+
+          const figures = totals(lines)
+          const shipping = SHIPPING_OPTIONS.find((option) => option.id === state.shippingId)
+          const payment = PAYMENT_METHODS.find((method) => method.id === state.paymentId)
+          const now = new Date()
+          const eta = new Date(now.getTime() + (shipping.id === 'express' ? 2 : 4) * 86_400_000)
+          const stamp = (date) => date.toISOString().slice(0, 10)
+
+          const order = {
+            id: `MP-${String(100_000 + state.orders.length * 7 + now.getSeconds()).slice(0, 6)}`,
+            status: 'to_ship',
+            placedAt: stamp(now),
+            updatedAt: stamp(now),
+            eta: stamp(eta),
+            address,
+            shippingLabel: `${shipping.name} (${shipping.eta})`,
+            paymentLabel: payment.name,
+            subtotal: figures.subtotal,
+            shippingFee: figures.shippingFee,
+            discount: figures.discount,
+            voucherCode: state.voucher ? state.voucher.code : '',
+            total: figures.total,
+            items: lines.map((line) => {
+              const product = productById(line.productId)
+              return {
+                productId: product.id,
+                name: product.name,
+                price: product.price,
+                qty: line.qty,
+                variation: [line.colour, line.size].filter(Boolean).join(' / '),
+              }
+            }),
+          }
+
+          state.orders.unshift(order)
+          // Ordered lines leave the cart; anything left unselected stays put.
+          state.cart = state.cart.filter((line) => !line.selected)
+          state.voucher = null
+
+          toast(`Order ${order.id} placed`, 'success')
+          navigate(`#/success/${order.id}`)
+        }
+
+        /* ── Event wiring (delegated) ───────────────────────────────────── */
+
+        document.addEventListener('click', (event) => {
+          const trigger = event.target.closest('[data-action]')
+          if (!trigger) return
+
+          const { action } = trigger.dataset
+          const productId = trigger.dataset.product
+          const key = trigger.dataset.key
+
+          const handlers = {
+            'open-login': () => bootstrap.Modal.getOrCreateInstance($('#loginModal')).show(),
+
+            'load-more': () => {
+              state.homeVisible += 12
+              render()
+            },
+
+            'toggle-wishlist': () => {
+              const product = productById(productId)
+              if (state.wishlist.has(productId)) {
+                state.wishlist.delete(productId)
+                toast(`Removed ${product.name} from wishlist`)
+              } else {
+                state.wishlist.add(productId)
+                toast(`Saved ${product.name} to wishlist`, 'success')
+              }
+              render()
+            },
+
+            'quick-add': () => {
+              const product = productById(productId)
+              // A product with real variations has to be configured on its page.
+              if (product.colours.length > 1 || product.sizes.length > 1) {
+                toast('Pick the options first')
+                navigate(`#/product/${productId}`)
+                return
+              }
+              addToCart(productId, { colour: product.colours[0], size: product.sizes[0], qty: 1 })
+              toast(`Added ${product.name} to cart`, 'success')
+              render()
+            },
+
+            'pick-colour': () => {
+              state.pdp[productId] = { ...state.pdp[productId], colour: trigger.dataset.value }
+              render()
+            },
+
+            'pick-size': () => {
+              state.pdp[productId] = { ...state.pdp[productId], size: trigger.dataset.value }
+              render()
+            },
+
+            'pick-image': () => {
+              state.pdp[productId] = { ...state.pdp[productId], image: Number(trigger.dataset.index) }
+              render()
+            },
+
+            qty: () => {
+              const product = productById(productId)
+              const current = state.pdp[productId]?.qty ?? 1
+              const next = Math.min(product.stock, Math.max(1, current + Number(trigger.dataset.delta)))
+              state.pdp[productId] = { ...state.pdp[productId], qty: next }
+              render()
+            },
+
+            'add-to-cart': () => {
+              const selection = resolveSelection(productId)
+              if (selection.error) return toast(selection.error, 'danger')
+              addToCart(productId, selection)
+              toast(`Added ${productById(productId).name} to cart`, 'success')
+              render()
+            },
+
+            'buy-now': () => {
+              const selection = resolveSelection(productId)
+              if (selection.error) return toast(selection.error, 'danger')
+              addToCart(productId, selection)
+              // Buy now means this item only, so deselect everything else.
+              const target = cartLineKey({ productId, colour: selection.colour, size: selection.size })
+              state.cart.forEach((line) => {
+                line.selected = cartLineKey(line) === target
+              })
+              if (!requireLogin('Login to continue to checkout')) return
+              navigate('#/checkout')
+            },
+
+            'chat-seller': () => toast('Chat is out of scope for this prototype'),
+            'follow-seller': () => toast('Following this seller', 'success'),
+
+            'toggle-line': () => {
+              const line = state.cart.find((item) => cartLineKey(item) === key)
+              line.selected = !line.selected
+              render()
+            },
+
+            'line-qty': () => {
+              const line = state.cart.find((item) => cartLineKey(item) === key)
+              const product = productById(line.productId)
+              line.qty = Math.min(product.stock, Math.max(1, line.qty + Number(trigger.dataset.delta)))
+              render()
+            },
+
+            'remove-line': () => {
+              state.cart = state.cart.filter((item) => cartLineKey(item) !== key)
+              toast('Item removed')
+              render()
+            },
+
+            'line-wishlist': () => {
+              const line = state.cart.find((item) => cartLineKey(item) === key)
+              state.wishlist.add(line.productId)
+              state.cart = state.cart.filter((item) => cartLineKey(item) !== key)
+              toast('Moved to wishlist', 'success')
+              render()
+            },
+
+            'remove-selected': () => {
+              const removed = selectedLines().length
+              if (removed === 0) return toast('Nothing selected')
+              state.cart = state.cart.filter((line) => !line.selected)
+              toast(`Removed ${removed} item${removed === 1 ? '' : 's'}`)
+              render()
+            },
+
+            'apply-voucher': () => {
+              const input = $('[data-testid="cart-voucher-input"]')
+              const errorBox = $('[data-testid="cart-voucher-error"]')
+              const code = input.value.trim().toUpperCase()
+              const voucher = VOUCHERS[code]
+              const figures = totals()
+
+              const reject = (message) => {
+                errorBox.textContent = message
+                errorBox.classList.remove('d-none')
+              }
+
+              if (!code) return reject('Enter a voucher code.')
+              if (!voucher) return reject(`“${code}” is not a valid code.`)
+              if (figures.subtotal < voucher.minSpend) {
+                return reject(`${code} needs a minimum spend of ${baht(voucher.minSpend)}.`)
+              }
+
+              state.voucher = voucher
+              toast(`Voucher ${code} applied`, 'success')
+              render()
+            },
+
+            'remove-voucher': () => {
+              state.voucher = null
+              toast('Voucher removed')
+              render()
+            },
+
+            'go-checkout': () => {
+              if (selectedLines().length === 0) return toast('Select at least one item', 'danger')
+              if (!requireLogin('Login to continue to checkout')) return
+              navigate('#/checkout')
+            },
+
+            'open-address': () => bootstrap.Modal.getOrCreateInstance($('#addressModal')).show(),
+
+            'place-order': placeOrder,
+
+            'orders-tab': () => {
+              state.ordersTab = trigger.dataset.tab
+              render()
+            },
+
+            'cancel-order': () => {
+              const order = state.orders.find((item) => item.id === trigger.dataset.order)
+              order.status = 'cancelled'
+              order.updatedAt = new Date().toISOString().slice(0, 10)
+              toast(`Order ${order.id} cancelled`)
+              render()
+            },
+
+            'advance-order': () => {
+              const order = state.orders.find((item) => item.id === trigger.dataset.order)
+              const next = ORDER_FLOW[ORDER_FLOW.indexOf(order.status) + 1]
+              if (!next) return
+              order.status = next
+              order.updatedAt = new Date().toISOString().slice(0, 10)
+              toast(`Order is now “${STATUS_LABELS[next]}”`)
+              render()
+            },
+
+            'confirm-receipt': () => {
+              const order = state.orders.find((item) => item.id === trigger.dataset.order)
+              order.status = 'completed'
+              order.updatedAt = new Date().toISOString().slice(0, 10)
+              toast('Delivery confirmed — you can review your items now', 'success')
+              render()
+            },
+
+            reorder: () => {
+              const order = state.orders.find((item) => item.id === trigger.dataset.order)
+              for (const item of order.items) {
+                const [colour, size] = item.variation ? item.variation.split(' / ') : []
+                addToCart(item.productId, { colour, size, qty: item.qty })
+              }
+              toast('Items added back to your cart', 'success')
+              navigate('#/cart')
+            },
+
+            'open-review': () => {
+              const modal = $('#reviewModal')
+              modal.dataset.product = productId
+              $('[data-testid="review-text"]').value = ''
+              bootstrap.Modal.getOrCreateInstance(modal).show()
+            },
+
+            'open-filters': () =>
+              bootstrap.Offcanvas.getOrCreateInstance($('#filterDrawer')).show(),
+
+            'apply-price': () => {
+              // Read from the panel this button belongs to, sidebar or drawer.
+              const panel = trigger.closest('[data-testid^="filter-panel"]')
+              state.filters.minPrice = $('[data-price="min"]', panel).value
+              state.filters.maxPrice = $('[data-price="max"]', panel).value
+              render()
+            },
+
+            'clear-filters': () => {
+              Object.assign(state.filters, {
+                category: '',
+                minPrice: '',
+                maxPrice: '',
+                minRating: 0,
+                freeShipping: false,
+              })
+              render()
+            },
+          }
+
+          const handler = handlers[action]
+          if (!handler) return
+
+          event.preventDefault()
+          handler()
+        })
+
+        /* Filters, selects and inline inputs. */
+        document.addEventListener('change', (event) => {
+          const target = event.target
+
+          if (target.dataset.filter === 'category') {
+            state.filters.category = target.value
+            return render()
+          }
+
+          if (target.dataset.filter === 'rating') {
+            state.filters.minRating = Number(target.value)
+            return render()
+          }
+
+          if (target.dataset.filter === 'freeShipping') {
+            state.filters.freeShipping = target.checked
+            return render()
+          }
+
+          if (target.dataset.testid === 'sort-select') {
+            state.filters.sort = target.value
+            return render()
+          }
+
+          if (target.dataset.testid === 'cart-select-all') {
+            state.cart.forEach((line) => {
+              line.selected = target.checked
+            })
+            return render()
+          }
+
+          if (target.name === 'checkout-address') {
+            state.selectedAddressId = target.dataset.address
+            return render()
+          }
+
+          if (target.name === 'checkout-shipping') {
+            state.shippingId = target.dataset.shipping
+            return render()
+          }
+
+          if (target.name === 'checkout-payment') {
+            state.paymentId = target.dataset.payment
+            return render()
+          }
+        })
+
+        /* Card fields are captured as you type so a re-render never loses them. */
+        document.addEventListener('input', (event) => {
+          const field = event.target.dataset.card
+          if (field) {
+            state.card[field] = event.target.value
+          }
+        })
+
+        /* Header search, with live suggestions. */
+        const searchForm = $('[data-testid="mkt-search-form"]')
+        const searchInput = $('[data-testid="mkt-search-input"]')
+        const suggestionBox = $('[data-testid="mkt-search-suggestions"]')
+
+        const hideSuggestions = () => suggestionBox.classList.add('d-none')
+
+        searchForm.addEventListener('submit', (event) => {
+          event.preventDefault()
+          hideSuggestions()
+          const term = searchInput.value.trim()
+          // The term goes in the URL, not just in state, so a result page can
+          // be linked, bookmarked and reloaded.
+          navigate(term ? `#/search?q=${encodeURIComponent(term)}` : '#/search')
+        })
+
+        searchInput.addEventListener('input', () => {
+          const term = searchInput.value.trim().toLowerCase()
+
+          if (term.length < 2) return hideSuggestions()
+
+          const matches = PRODUCTS.filter((product) => product.name.toLowerCase().includes(term)).slice(0, 6)
+
+          if (matches.length === 0) return hideSuggestions()
+
+          suggestionBox.innerHTML = matches
+            .map(
+              (product) => `
+                <button type="button" class="list-group-item list-group-item-action search-suggestion small"
+                        data-suggestion="${product.id}" data-testid="mkt-search-suggestion">
+                  <span class="me-2">${product.emoji}</span>${escapeHtml(product.name)}
+                  <span class="price float-end">${baht(product.price)}</span>
+                </button>`,
+            )
+            .join('')
+          suggestionBox.classList.remove('d-none')
+        })
+
+        suggestionBox.addEventListener('click', (event) => {
+          const suggestion = event.target.closest('[data-suggestion]')
+          if (!suggestion) return
+          hideSuggestions()
+          searchInput.value = ''
+          navigate(`#/product/${suggestion.dataset.suggestion}`)
+        })
+
+        document.addEventListener('click', (event) => {
+          if (!event.target.closest('[data-testid="mkt-search-form"]')) hideSuggestions()
+        })
+
+        /* Category nav. */
+        $('[data-testid="mkt-catnav"]').innerHTML = `
+          <li class="nav-item"><a class="nav-link" href="#/search" data-category="">All</a></li>
+          ${CATEGORIES.map(
+            (category) => `
+              <li class="nav-item">
+                <a class="nav-link" href="#/search?category=${category.id}" data-category="${category.id}">
+                  ${category.emoji} ${escapeHtml(category.name)}
+                </a>
+              </li>`,
+          ).join('')}
+          <li class="nav-item ms-auto d-none d-md-block">
+            <a class="nav-link" href="#/orders">📦 My orders</a>
+          </li>`
+
+        /* Login. */
+        $('[data-testid="login-form"]').addEventListener('submit', (event) => {
+          event.preventDefault()
+          const form = event.currentTarget
+
+          if (!form.checkValidity()) {
+            form.classList.add('was-validated')
+            return
+          }
+
+          state.user = {
+            name: $('[data-testid="login-name"]').value.trim(),
+            email: $('[data-testid="login-email"]').value.trim(),
+          }
+
+          bootstrap.Modal.getOrCreateInstance($('#loginModal')).hide()
+          form.classList.remove('was-validated')
+          toast(`Welcome, ${state.user.name}`, 'success')
+          render()
+        })
+
+        /* New address. */
+        $('[data-testid="address-form"]').addEventListener('submit', (event) => {
+          event.preventDefault()
+          const form = event.currentTarget
+
+          if (!form.checkValidity()) {
+            form.classList.add('was-validated')
+            return
+          }
+
+          const address = {
+            id: `a${state.addresses.length + 1}`,
+            label: $('input[name="addr-label"]:checked').value,
+            name: $('[data-testid="addr-name"]').value.trim(),
+            phone: $('[data-testid="addr-phone"]').value.trim(),
+            line: $('[data-testid="addr-line"]').value.trim(),
+            city: $('[data-testid="addr-city"]').value.trim(),
+            postcode: $('[data-testid="addr-post"]').value.trim(),
+          }
+
+          state.addresses.push(address)
+          state.selectedAddressId = address.id
+
+          bootstrap.Modal.getOrCreateInstance($('#addressModal')).hide()
+          form.reset()
+          form.classList.remove('was-validated')
+          toast('Address saved', 'success')
+          render()
+        })
+
+        /* New review. */
+        $('[data-testid="review-form"]').addEventListener('submit', (event) => {
+          event.preventDefault()
+          const form = event.currentTarget
+
+          if (!form.checkValidity()) {
+            form.classList.add('was-validated')
+            return
+          }
+
+          const modal = $('#reviewModal')
+          const product = productById(modal.dataset.product)
+          const rating = Number($('input[name="review-rating"]:checked').value)
+
+          product.reviews.unshift({
+            id: `r-${Date.now()}`,
+            author: state.user ? state.user.name : 'you',
+            rating,
+            text: $('[data-testid="review-text"]').value.trim(),
+            date: new Date().toISOString().slice(0, 10),
+          })
+          product.reviewCount += 1
+
+          bootstrap.Modal.getOrCreateInstance(modal).hide()
+          form.classList.remove('was-validated')
+          toast('Thanks for your review', 'success')
+          render()
+        })
+
+        /* ── Boot ───────────────────────────────────────────────────────── */
+
+        /**
+         * `q`, `category` and `sort` are read out of the URL on every
+         * navigation, so `#/search?q=shoes` always means the same thing.
+         * The sidebar controls then refine that result set in place — price,
+         * rating and free-shipping are deliberately not in the URL, which is
+         * as far as a prototype needs to take it.
+         */
+        function seedFiltersFromRoute() {
+          if (state.route.name !== 'search') return
+
+          const { q = '', category = '', sort } = state.route.params
+          state.filters.query = q
+          state.filters.category = category
+          if (sort) state.filters.sort = sort
+        }
+
+        window.addEventListener('hashchange', () => {
+          state.route = parseHash()
+          seedFiltersFromRoute()
+          render()
+        })
+
+        state.route = parseHash()
+        seedFiltersFromRoute()
+        render()
+      })()
+    </script>
+  </body>
+</html>
