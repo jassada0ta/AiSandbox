@@ -1,0 +1,35 @@
+{
+  "name": "aisandbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AiSandbox monorepo: Strapi API, React SPA, prototype host and Playwright e2e tests.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0 <=26.x.x"
+  },
+  "scripts": {
+    "setup": "node scripts/ensure-env.mjs",
+    "predev": "npm run setup",
+    "dev": "concurrently -n api,spa,proto -c blue,green,magenta \"npm:dev:api\" \"npm:dev:spa\" \"npm:dev:proto\"",
+    "dev:api": "npm run develop --workspace apps/SandboxApi",
+    "dev:spa": "npm run dev --workspace apps/SandboxSpaApp",
+    "dev:proto": "npm run dev --workspace apps/SandboxPrototypeWeb",
+    "build": "npm run build:spa && npm run build:proto && npm run build:api",
+    "build:api": "npm run build --workspace apps/SandboxApi",
+    "build:spa": "npm run build --workspace apps/SandboxSpaApp",
+    "build:proto": "npm run build --workspace apps/SandboxPrototypeWeb",
+    "start": "npm run start --workspace apps/SandboxApi",
+    "lint": "npm run lint --workspace apps/SandboxSpaApp",
+    "pretest:e2e": "npm run setup && npm run build",
+    "test:e2e": "npm run test --workspace apps/SandboxE2eTest",
+    "test:e2e:ui": "npm run test:ui --workspace apps/SandboxE2eTest",
+    "e2e:install": "npm run install:browsers --workspace apps/SandboxE2eTest",
+    "spec:new": "node scripts/new-spec.mjs",
+    "spec:check": "node scripts/check-specs.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
