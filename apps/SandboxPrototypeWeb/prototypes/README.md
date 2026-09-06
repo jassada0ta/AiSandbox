@@ -45,3 +45,22 @@ the back link.
 
 Each file is built as its own page, so `prototypes/foo/bar.html` is served at
 `/prototypes/foo/bar.html` in both `npm run dev` and the production build.
+
+## Prototypes in more than one language
+
+`proto-condo-mgmt.html` is the worked example. Two rules make it work:
+
+- **No view renders a literal sentence.** Every string is one `[english, thai]`
+  entry in a `STR` table, read through `t('key')`, and every label in the data
+  tables is the same pair shape. A language switch is then just a re-render,
+  and a string someone forgot to translate is impossible to hide — it shows up
+  as `[the.key]` on screen.
+- **The `<title>`, the one `<h1>` and the back link stay in English.** The
+  index page pairs `<title>` with the `<h1>`, and `index.spec.js` checks both
+  that they agree and that the back link still reads "All prototypes", so
+  English has to be the first-load language.
+
+Re-rendering a view would otherwise discard whatever is half-typed into a form,
+so the switch snapshots the fields by id and writes them back afterwards. The
+open dialog carries its own copy of the switch, because the page-level one sits
+behind Bootstrap's modal backdrop.
