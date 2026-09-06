@@ -2,9 +2,10 @@ import { expect, test } from '@playwright/test'
 
 /**
  * Covers the dental clinic prototype's main patient flows end to end:
- * register, browse services, book with a dentist, manage the appointment, and
- * chat. Assertions read `data-testid` and `data-*` state rather than layout or
- * copy, which a design exploration is expected to churn.
+ * register, browse services, book with a dentist, manage the appointment, chat,
+ * and switch between Thai and English. Assertions read `data-testid` and
+ * `data-*` state rather than layout, except where the copy itself is the thing
+ * under test.
  *
  * State lives in localStorage, so each test clears it and reloads to get the
  * seeded demo data back.
@@ -394,5 +395,245 @@ test.describe('dental clinic prototype — account', () => {
 
     await expect(page.locator('body')).toHaveAttribute('data-patients', '1')
     await expect(page.locator('body')).toHaveAttribute('data-signed-in', 'false')
+  })
+})
+
+test.describe('dental clinic prototype — Thai and English', () => {
+  /**
+   * Text that stays in Latin script in Thai mode: the clinic's brand, contact
+   * details, demo credentials, prices, reference codes and clinical acronyms.
+   */
+  const LATIN_ALLOWED =
+    /^(BrightSmile|Dental|BrightSmile Dental|EN|ไทย|HICAPS|Medicare|CDBS|SMS|Medibank|Bupa|Jordan|Avery|Jordan Avery|Dental Clinic|demo@brightsmile\.test( \/ demo1234)?|BS-\d+|MB-\d+|[A-Z]{2,3}|·|\||[\d\s:.,\-–/+()$]+)$/
+
+  test('starts in English and switches to Thai', async ({ page }) => {
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.locator('body')).toHaveAttribute('data-lang', 'en')
+    await expect(page.locator('[data-route="services"]').first()).toHaveText('Services')
+
+    await page.getByTestId('lang-th').click()
+
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+    await expect(page.locator('body')).toHaveAttribute('data-lang', 'th')
+    await expect(page.locator('[data-route="services"]').first()).toHaveText('บริการ')
+    await expect(page.getByTestId('lang-th')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('lang-en')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('remembers the language across a reload, and switches back', async ({ page }) => {
+    await page.getByTestId('lang-th').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+    await expect(page.locator('[data-route="home"]').first()).toContainText('หน้าแรก')
+
+    await page.getByTestId('lang-en').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.locator('[data-route="home"]').first()).toContainText('Home')
+  })
+
+  test('every string and data field carries both languages', async ({ page }) => {
+    const gaps = await page.evaluate(() => {
+      const { strings, services, dentists } = window.__i18n
+      const out = []
+
+      Object.keys(strings).forEach((key) => {
+        ;['en', 'th'].forEach((lang) => {
+          if (!strings[key][lang] || !String(strings[key][lang]).trim()) out.push(`strings.${key}.${lang}`)
+        })
+      })
+
+      const checkPair = (label, value) => {
+        ;['en', 'th'].forEach((lang) => {
+          const v = value ? value[lang] : null
+          const empty = Array.isArray(v) ? v.length === 0 : !v || !String(v).trim()
+          if (empty) out.push(`${label}.${lang}`)
+        })
+      }
+
+      services.forEach((s) => {
+        checkPair(`${s.id}.name`, s.name)
+        checkPair(`${s.id}.blurb`, s.blurb)
+        checkPair(`${s.id}.detail`, s.detail)
+        checkPair(`${s.id}.includes`, s.includes)
+        // Both languages must list the same number of inclusions.
+        if (s.includes.en.length !== s.includes.th.length) out.push(`${s.id}.includes.length`)
+      })
+
+      dentists.forEach((d) => {
+        checkPair(`${d.id}.name`, d.name)
+        checkPair(`${d.id}.short`, d.short)
+        checkPair(`${d.id}.title`, d.title)
+        checkPair(`${d.id}.bio`, d.bio)
+      })
+
+      // Categories and spoken languages are keys resolved through the dictionary.
+      services.forEach((s) => {
+        if (!strings['cat.' + s.category]) out.push(`missing cat.${s.category}`)
+      })
+      dentists.forEach((d) => {
+        d.specialties.forEach((c) => {
+          if (!strings['cat.' + c]) out.push(`missing cat.${c}`)
+        })
+        d.languages.forEach((l) => {
+          if (!strings['spoken.' + l]) out.push(`missing spoken.${l}`)
+        })
+      })
+
+      return out
+    })
+
+    expect(gaps).toEqual([])
+  })
+
+  test('leaves no English text behind on any view', async ({ page }) => {
+    await signInAsDemo(page)
+    await page.getByTestId('lang-th').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+
+    for (const route of ['home', 'services', 'book', 'appointments', 'chat', 'register', 'profile']) {
+      await page.goto(`${PROTOTYPE}#/${route}`)
+      await expect(page.locator('body')).toHaveAttribute('data-route', route)
+
+      const latinOnly = await page.evaluate(() => {
+        const roots = [
+          document.querySelector('.clinic-topbar'),
+          document.querySelector('nav.navbar'),
+          document.querySelector('.view:not(.d-none)'),
+          document.querySelector('footer'),
+        ].filter(Boolean)
+
+        const found = []
+        for (const root of roots) {
+          const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+          let node
+          while ((node = walk.nextNode())) {
+            const text = node.textContent.trim().replace(/\s+/g, ' ')
+            if (!text) continue
+            if (node.parentElement.closest('code, .visually-hidden, [aria-hidden="true"]')) continue
+            // Anything user-facing should carry Thai script in Thai mode.
+            if (!/[฀-๿]/.test(text)) found.push(text)
+          }
+        }
+        return [...new Set(found)]
+      })
+
+      const unexpected = latinOnly.filter((text) => !LATIN_ALLOWED.test(text))
+      expect(unexpected, `untranslated text on #/${route}`).toEqual([])
+    }
+  })
+
+  test('books an appointment end to end in Thai', async ({ page }) => {
+    await signInAsDemo(page)
+    await page.getByTestId('lang-th').click()
+    await page.goto(`${PROTOTYPE}#/book`)
+
+    await fillWizard(page)
+    await page.getByTestId('agree-policy').check()
+    await page.getByTestId('wizard-next').click()
+
+    await expect(page.locator('body')).toHaveAttribute('data-route', 'booked')
+    await expect(page.getByTestId('booking-reference')).toHaveText(/^BS-\d{4}$/)
+    // The confirmation reads in Thai, including the treatment name.
+    await expect(page.getByTestId('booked-summary')).toContainText('ตรวจฟันและขูดหินปูน')
+  })
+
+  test('formats dates and times the Thai way', async ({ page }) => {
+    await signInAsDemo(page)
+    await page.goto(`${PROTOTYPE}#/appointments`)
+
+    const when = page.getByTestId('appt-when').first()
+    await expect(when).toContainText(/am|pm/)
+
+    await page.getByTestId('lang-th').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+
+    // 24-hour clock with the Thai time marker, and the Buddhist era year.
+    await expect(when).toContainText('น.')
+    await expect(when).not.toContainText(/am|pm/)
+    const buddhistYear = new Date().getFullYear() + 543
+    await expect(when).toContainText(String(buddhistYear))
+  })
+
+  test('replies in Thai to a question asked in Thai', async ({ page }) => {
+    await signInAsDemo(page)
+    await page.getByTestId('lang-th').click()
+    await page.goto(`${PROTOTYPE}#/chat`)
+
+    await page.getByTestId('chat-input').fill('ปวดฟันมาก ควรทำอย่างไร')
+    await page.getByTestId('chat-send').click()
+
+    const theirs = page.locator('[data-testid="chat-message"][data-from="them"]')
+    // Keyword matching works on Thai, so this is the toothache reply, not the fallback.
+    await expect(theirs.last()).toContainText('น้ำเกลืออุ่น')
+  })
+
+  test('re-reads the clinic’s own messages in the new language, but not the patient’s', async ({ page }) => {
+    await signInAsDemo(page)
+    await page.goto(`${PROTOTYPE}#/chat`)
+
+    // Seeded history starts in English.
+    await expect(page.getByTestId('chat-log')).toContainText('sensitivity to cold')
+
+    const typed = 'Please keep this exactly as I typed it.'
+    await page.getByTestId('chat-input').fill(typed)
+    await page.getByTestId('chat-send').click()
+    await expect(page.locator('[data-testid="chat-message"][data-from="them"]').last()).toBeVisible()
+
+    await page.getByTestId('lang-th').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+
+    // The clinic's seeded copy follows the language…
+    await expect(page.getByTestId('chat-log')).toContainText('เสียวฟันเวลาโดนของเย็น')
+    await expect(page.getByTestId('chat-log')).not.toContainText('sensitivity to cold')
+    // …while what the patient typed is left exactly as they wrote it.
+    await expect(page.locator('[data-testid="chat-message"][data-from="me"]').last()).toHaveText(
+      new RegExp(typed.replace('.', '\\.')),
+    )
+  })
+
+  test('keeps the index-page contract in English so the entry page still matches', async ({ page }) => {
+    await page.getByTestId('lang-th').click()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th')
+
+    // The manifest reads <title> at build time, and index.spec.js compares it
+    // to the page's single <h1>, so neither may follow the language toggle.
+    await expect(page).toHaveTitle('Dental Clinic')
+    await expect(page.locator('h1')).toHaveText('Dental Clinic')
+  })
+
+  test('translates the modals', async ({ page }) => {
+    await page.goto(`${PROTOTYPE}#/services`)
+    await page.locator('[data-testid="service-details"][data-id="svc-implant"]').click()
+    await expect(page.getByTestId('service-modal-body')).toContainText('titanium')
+    await page.getByTestId('service-modal').getByTestId('modal-close-x').click()
+
+    await page.getByTestId('lang-th').click()
+    await page.locator('[data-testid="service-details"][data-id="svc-implant"]').click()
+
+    const body = page.getByTestId('service-modal-body')
+    await expect(body).toContainText('ไทเทเนียม')
+    await expect(body).not.toContainText('titanium')
+    // Modal chrome and the treatment title come from the dictionary too.
+    await expect(page.locator('#serviceModalTitle')).toHaveText('รากฟันเทียม')
+    await expect(page.getByTestId('service-modal-book')).toContainText('จองการรักษานี้')
+  })
+
+  test('finds a treatment by its name in either language', async ({ page }) => {
+    await page.goto(`${PROTOTYPE}#/services`)
+    const cards = page.getByTestId('service-grid').getByTestId('service-card')
+
+    // Thai term while the page is in English…
+    await page.getByTestId('service-search').fill('ฟอกสีฟัน')
+    await expect(cards).toHaveCount(1)
+
+    await page.getByTestId('lang-th').click()
+    await expect(cards).toHaveCount(1)
+
+    // …and an English term while the page is in Thai.
+    await page.getByTestId('service-search').fill('whitening')
+    await expect(cards).toHaveCount(1)
+    await expect(cards.first()).toContainText('ฟอกสีฟัน')
   })
 })

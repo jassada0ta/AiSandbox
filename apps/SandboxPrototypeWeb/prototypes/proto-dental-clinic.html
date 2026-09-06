@@ -60,6 +60,16 @@
     vertical-align: -.125em; flex: 0 0 auto;
   }
 
+  /* Thai needs its own font stack, and a taller line box so the upper and
+     lower diacritics are not clipped by Bootstrap's default line-height. */
+  html[lang="th"] body {
+    font-family: 'Noto Sans Thai', 'Sarabun', 'Leelawadee UI', 'Loma', 'Tahoma', system-ui, sans-serif;
+    line-height: 1.7;
+  }
+  html[lang="th"] .wizard-steps li,
+  html[lang="th"] .date-pill { line-height: 1.45; }
+  html[lang="th"] .date-pill { width: 82px; }
+
   .clinic-topbar { background: var(--brand-deep); }
 
   .navbar-brand-mark {
@@ -227,11 +237,17 @@
 <!-- ============================== TOP BAR ============================== -->
 <div class="clinic-topbar text-white py-1 no-print">
   <div class="container d-flex flex-wrap justify-content-between align-items-center gap-2 small">
-    <a href="/" class="text-white text-decoration-none" data-testid="back-to-index">&larr; All prototypes</a>
+    <a href="/" class="text-white text-decoration-none" data-testid="back-to-index" data-i18n="top.back">&larr; All prototypes</a>
     <div class="d-flex align-items-center gap-3">
-      <span class="d-none d-sm-inline">12 Marine Parade, Southbank</span>
+      <span class="d-none d-sm-inline" data-i18n="top.address">12 Marine Parade, Southbank</span>
       <span class="d-none d-sm-inline opacity-50">|</span>
-      <span>Emergencies: <a href="tel:1800555010" class="text-white">1800 555 010</a></span>
+      <span><span data-i18n="top.emergency">Emergencies:</span> <a href="tel:1800555010" class="text-white">1800 555 010</a></span>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Language" data-testid="lang-switch">
+        <button type="button" class="btn btn-light" data-lang-option="en" data-testid="lang-en"
+                aria-pressed="true" data-i18n="top.langEn">EN</button>
+        <button type="button" class="btn btn-outline-light" data-lang-option="th" data-testid="lang-th"
+                aria-pressed="false" data-i18n="top.langTh">ไทย</button>
+      </div>
     </div>
   </div>
 </div>
@@ -245,19 +261,19 @@
     </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
-            aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+            aria-controls="mainNav" aria-expanded="false" data-i18n-aria="nav.toggle" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
 
     <div class="collapse navbar-collapse" id="mainNav">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <li class="nav-item"><a class="nav-link" href="#/home" data-route="home">Home</a></li>
-        <li class="nav-item"><a class="nav-link" href="#/services" data-route="services">Services</a></li>
-        <li class="nav-item"><a class="nav-link" href="#/book" data-route="book">Book Appointment</a></li>
-        <li class="nav-item"><a class="nav-link" href="#/appointments" data-route="appointments">My Appointments</a></li>
+        <li class="nav-item"><a class="nav-link" href="#/home" data-route="home" data-i18n="nav.home">Home</a></li>
+        <li class="nav-item"><a class="nav-link" href="#/services" data-route="services" data-i18n="nav.services">Services</a></li>
+        <li class="nav-item"><a class="nav-link" href="#/book" data-route="book" data-i18n="nav.book">Book Appointment</a></li>
+        <li class="nav-item"><a class="nav-link" href="#/appointments" data-route="appointments" data-i18n="nav.appointments">My Appointments</a></li>
         <li class="nav-item">
           <a class="nav-link d-flex align-items-center gap-1" href="#/chat" data-route="chat">
-            Chat with a Dentist
+            <span data-i18n="nav.chat">Chat with a Dentist</span>
             <span class="badge rounded-pill text-bg-danger d-none" id="chatBadge" data-testid="chat-badge">0</span>
           </a>
         </li>
@@ -275,27 +291,27 @@
     <div class="hero p-4 p-lg-5 mb-4">
       <div class="row align-items-center g-4">
         <div class="col-lg-7">
-          <span class="badge rounded-pill bg-white text-primary mb-3">Open today · 09:00–17:00</span>
-          <h2 class="display-6 fw-bold mb-3">A healthier smile, booked in under a minute.</h2>
-          <p class="lead opacity-75 mb-4">
+          <span class="badge rounded-pill bg-white text-primary mb-3" data-i18n="home.openToday">Open today · 09:00–17:00</span>
+          <h2 class="display-6 fw-bold mb-3" data-i18n="home.title">A healthier smile, booked in under a minute.</h2>
+          <p class="lead opacity-75 mb-4" data-i18n="home.lead">
             Register as a patient, browse our treatments, pick a dentist and a time that suits you,
             and message your dentist any time — all from one place.
           </p>
           <div class="d-flex flex-wrap gap-2">
             <a href="#/book" data-route="book" class="btn btn-light btn-lg fw-semibold text-primary">
-              <svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> Book an appointment
+              <svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> <span data-i18n="home.ctaBook">Book an appointment</span>
             </a>
             <a href="#/register" data-route="register" class="btn btn-outline-light btn-lg">
-              <svg class="ico me-1" aria-hidden="true"><use href="#i-person-plus"></use></svg> Register as a patient
+              <svg class="ico me-1" aria-hidden="true"><use href="#i-person-plus"></use></svg> <span data-i18n="home.ctaRegister">Register as a patient</span>
             </a>
           </div>
         </div>
         <div class="col-lg-5">
           <div class="row g-3">
-            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">12k+</div><small class="opacity-75">Happy patients</small></div></div>
-            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">6</div><small class="opacity-75">Specialist dentists</small></div></div>
-            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">4.9</div><small class="opacity-75">Average rating</small></div></div>
-            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">24/7</div><small class="opacity-75">Emergency line</small></div></div>
+            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold" data-i18n="home.statPatientsValue">12k+</div><small class="opacity-75" data-i18n="home.statPatients">Happy patients</small></div></div>
+            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">6</div><small class="opacity-75" data-i18n="home.statDentists">Specialist dentists</small></div></div>
+            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">4.9</div><small class="opacity-75" data-i18n="home.statRating">Average rating</small></div></div>
+            <div class="col-6"><div class="stat ps-3"><div class="h3 mb-0 fw-bold">24/7</div><small class="opacity-75" data-i18n="home.statEmergency">Emergency line</small></div></div>
           </div>
         </div>
       </div>
@@ -307,8 +323,8 @@
           <div class="card h-100 border-0 shadow-sm card-hover">
             <div class="card-body">
               <div class="icon-tile mb-3"><svg class="ico" aria-hidden="true"><use href="#i-calendar2-check"></use></svg></div>
-              <h6 class="fw-semibold text-body">Book a schedule</h6>
-              <p class="small text-secondary mb-0">Choose a treatment, dentist, date and time slot.</p>
+              <h6 class="fw-semibold text-body" data-i18n="home.quickBook">Book a schedule</h6>
+              <p class="small text-secondary mb-0" data-i18n="home.quickBookDesc">Choose a treatment, dentist, date and time slot.</p>
             </div>
           </div>
         </a>
@@ -318,8 +334,8 @@
           <div class="card h-100 border-0 shadow-sm card-hover">
             <div class="card-body">
               <div class="icon-tile mb-3"><svg class="ico" aria-hidden="true"><use href="#i-person-vcard"></use></svg></div>
-              <h6 class="fw-semibold text-body">Register as patient</h6>
-              <p class="small text-secondary mb-0">Create your patient record and medical profile.</p>
+              <h6 class="fw-semibold text-body" data-i18n="home.quickRegister">Register as patient</h6>
+              <p class="small text-secondary mb-0" data-i18n="home.quickRegisterDesc">Create your patient record and medical profile.</p>
             </div>
           </div>
         </a>
@@ -329,8 +345,8 @@
           <div class="card h-100 border-0 shadow-sm card-hover">
             <div class="card-body">
               <div class="icon-tile mb-3"><svg class="ico" aria-hidden="true"><use href="#i-grid-3x3-gap"></use></svg></div>
-              <h6 class="fw-semibold text-body">Browse services</h6>
-              <p class="small text-secondary mb-0">Treatments, durations and transparent pricing.</p>
+              <h6 class="fw-semibold text-body" data-i18n="home.quickServices">Browse services</h6>
+              <p class="small text-secondary mb-0" data-i18n="home.quickServicesDesc">Treatments, durations and transparent pricing.</p>
             </div>
           </div>
         </a>
@@ -340,8 +356,8 @@
           <div class="card h-100 border-0 shadow-sm card-hover">
             <div class="card-body">
               <div class="icon-tile mb-3"><svg class="ico" aria-hidden="true"><use href="#i-chat-dots"></use></svg></div>
-              <h6 class="fw-semibold text-body">Chat with a dentist</h6>
-              <p class="small text-secondary mb-0">Ask a question before you come in.</p>
+              <h6 class="fw-semibold text-body" data-i18n="home.quickChat">Chat with a dentist</h6>
+              <p class="small text-secondary mb-0" data-i18n="home.quickChatDesc">Ask a question before you come in.</p>
             </div>
           </div>
         </a>
@@ -350,17 +366,17 @@
 
     <div class="d-flex align-items-end justify-content-between mb-3">
       <div>
-        <h3 class="h4 fw-bold mb-1">Popular treatments</h3>
-        <p class="text-secondary mb-0 small">Our most requested services this month.</p>
+        <h3 class="h4 fw-bold mb-1" data-i18n="home.popular">Popular treatments</h3>
+        <p class="text-secondary mb-0 small" data-i18n="home.popularSub">Our most requested services this month.</p>
       </div>
-      <a href="#/services" data-route="services" class="btn btn-sm btn-outline-primary">View all</a>
+      <a href="#/services" data-route="services" class="btn btn-sm btn-outline-primary" data-i18n="home.viewAll">View all</a>
     </div>
     <div class="row g-3 mb-5" id="homeServices" data-testid="home-services"></div>
 
     <div class="d-flex align-items-end justify-content-between mb-3">
       <div>
-        <h3 class="h4 fw-bold mb-1">Meet the team</h3>
-        <p class="text-secondary mb-0 small">Pick the dentist you feel most comfortable with.</p>
+        <h3 class="h4 fw-bold mb-1" data-i18n="home.team">Meet the team</h3>
+        <p class="text-secondary mb-0 small" data-i18n="home.teamSub">Pick the dentist you feel most comfortable with.</p>
       </div>
     </div>
     <div class="row g-3" id="homeDentists"></div>
@@ -370,13 +386,13 @@
   <section id="view-services" class="view d-none">
     <div class="row g-3 align-items-end mb-4">
       <div class="col-lg-6">
-        <h2 class="h3 fw-bold mb-1">Clinic services</h2>
-        <p class="text-secondary mb-0">Browse our treatments, then book the one you need.</p>
+        <h2 class="h3 fw-bold mb-1" data-i18n="services.title">Clinic services</h2>
+        <p class="text-secondary mb-0" data-i18n="services.sub">Browse our treatments, then book the one you need.</p>
       </div>
       <div class="col-lg-6">
         <div class="input-group">
           <span class="input-group-text bg-white"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg></span>
-          <input type="search" class="form-control" id="serviceSearch" data-testid="service-search" placeholder="Search treatments, e.g. whitening, braces">
+          <input type="search" class="form-control" id="serviceSearch" data-testid="service-search" data-i18n-ph="services.searchPh" placeholder="Search treatments, e.g. whitening, braces">
         </div>
       </div>
     </div>
@@ -384,85 +400,85 @@
     <div class="d-flex flex-wrap gap-2 mb-4" id="serviceFilters" data-testid="service-filters"></div>
     <div class="row g-3" id="serviceGrid" data-testid="service-grid"></div>
     <div class="alert alert-light border text-center d-none" id="serviceEmpty" data-testid="service-empty">
-      <svg class="ico me-1" aria-hidden="true"><use href="#i-emoji-frown"></use></svg> No treatments match your search.
+      <svg class="ico me-1" aria-hidden="true"><use href="#i-emoji-frown"></use></svg> <span data-i18n="services.empty">No treatments match your search.</span>
     </div>
   </section>
 
   <!-- ============================== BOOKING WIZARD ============================== -->
   <section id="view-book" class="view d-none">
     <div class="mb-4">
-      <h2 class="h3 fw-bold mb-1">Book an appointment</h2>
-      <p class="text-secondary mb-0">Four quick steps — treatment, dentist, time, confirm.</p>
+      <h2 class="h3 fw-bold mb-1" data-i18n="book.title">Book an appointment</h2>
+      <p class="text-secondary mb-0" data-i18n="book.sub">Four quick steps — treatment, dentist, time, confirm.</p>
     </div>
 
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body">
         <ul class="wizard-steps" id="wizardSteps" data-testid="wizard-steps">
-          <li data-step="1"><div class="bubble">1</div>Treatment</li>
-          <li data-step="2"><div class="bubble">2</div>Dentist</li>
-          <li data-step="3"><div class="bubble">3</div>Date &amp; time</li>
-          <li data-step="4"><div class="bubble">4</div>Confirm</li>
+          <li data-step="1"><div class="bubble">1</div><span data-i18n="book.step1">Treatment</span></li>
+          <li data-step="2"><div class="bubble">2</div><span data-i18n="book.step2">Dentist</span></li>
+          <li data-step="3"><div class="bubble">3</div><span data-i18n="book.step3">Date &amp; time</span></li>
+          <li data-step="4"><div class="bubble">4</div><span data-i18n="book.step4">Confirm</span></li>
         </ul>
       </div>
     </div>
 
     <!-- Step 1: treatment -->
     <div class="booking-step" data-testid="booking-step" data-step="1">
-      <h3 class="h5 fw-semibold mb-3">1. Which treatment do you need?</h3>
+      <h3 class="h5 fw-semibold mb-3" data-i18n="book.step1Title">1. Which treatment do you need?</h3>
       <div class="row g-3" id="bookServiceGrid" data-testid="book-service-grid"></div>
     </div>
 
     <!-- Step 2: dentist -->
     <div class="booking-step d-none" data-testid="booking-step" data-step="2">
-      <h3 class="h5 fw-semibold mb-1">2. Choose your dentist</h3>
+      <h3 class="h5 fw-semibold mb-1" data-i18n="book.step2Title">2. Choose your dentist</h3>
       <p class="text-secondary small mb-3" id="bookDentistHint"></p>
       <div class="form-check form-switch mb-3">
         <input class="form-check-input" type="checkbox" id="showAllDentists">
-        <label class="form-check-label small" for="showAllDentists">Show all dentists, not just specialists for this treatment</label>
+        <label class="form-check-label small" for="showAllDentists" data-i18n="book.step2ShowAll">Show all dentists, not just specialists for this treatment</label>
       </div>
       <div class="row g-3" id="bookDentistGrid" data-testid="book-dentist-grid"></div>
     </div>
 
     <!-- Step 3: date & time -->
     <div class="booking-step d-none" data-testid="booking-step" data-step="3">
-      <h3 class="h5 fw-semibold mb-1">3. Pick a date and time</h3>
+      <h3 class="h5 fw-semibold mb-1" data-i18n="book.step3Title">3. Pick a date and time</h3>
       <p class="text-secondary small mb-3" id="bookSlotHint"></p>
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
-          <label class="form-label small fw-semibold text-secondary text-uppercase">Available dates</label>
+          <label class="form-label small fw-semibold text-secondary text-uppercase" data-i18n="book.dates">Available dates</label>
           <div class="date-strip mb-4" id="dateStrip" data-testid="date-strip"></div>
 
-          <label class="form-label small fw-semibold text-secondary text-uppercase">Available times</label>
+          <label class="form-label small fw-semibold text-secondary text-uppercase" data-i18n="book.times">Available times</label>
           <div id="slotArea" data-testid="slot-area"></div>
         </div>
       </div>
       <div class="mb-3">
-        <label for="visitReason" class="form-label">Reason for visit <span class="text-secondary fw-normal">(optional)</span></label>
+        <label for="visitReason" class="form-label"><span data-i18n="book.reason">Reason for visit</span> <span class="text-secondary fw-normal" data-i18n="book.optional">(optional)</span></label>
         <textarea class="form-control" id="visitReason" data-testid="visit-reason" rows="2" maxlength="300"
-                  placeholder="e.g. Sharp pain in my lower left molar when chewing"></textarea>
+                  data-i18n-ph="book.reasonPh" placeholder="e.g. Sharp pain in my lower left molar when chewing"></textarea>
       </div>
     </div>
 
     <!-- Step 4: confirm -->
     <div class="booking-step d-none" data-testid="booking-step" data-step="4">
-      <h3 class="h5 fw-semibold mb-3">4. Review and confirm</h3>
+      <h3 class="h5 fw-semibold mb-3" data-i18n="book.step4Title">4. Review and confirm</h3>
       <div class="row g-3">
         <div class="col-lg-7"><div id="bookSummary"></div></div>
         <div class="col-lg-5">
           <div class="card border-0 shadow-sm">
             <div class="card-body">
-              <h6 class="fw-semibold mb-3">Booking for</h6>
+              <h6 class="fw-semibold mb-3" data-i18n="book.bookingFor">Booking for</h6>
               <div id="bookPatientBox" data-testid="book-patient-box"></div>
               <hr>
               <div class="form-check mb-2">
                 <input class="form-check-input" type="checkbox" id="agreePolicy" data-testid="agree-policy">
-                <label class="form-check-label small" for="agreePolicy">
+                <label class="form-check-label small" for="agreePolicy" data-i18n="book.agree">
                   I understand that cancellations within 24 hours of the appointment may incur a fee.
                 </label>
               </div>
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="wantReminder" checked>
-                <label class="form-check-label small" for="wantReminder">Send me an SMS reminder the day before.</label>
+                <label class="form-check-label small" for="wantReminder" data-i18n="book.reminder">Send me an SMS reminder the day before.</label>
               </div>
             </div>
           </div>
@@ -473,7 +489,7 @@
     <!-- Wizard controls -->
     <div class="d-flex justify-content-between align-items-center mt-4" id="wizardControls">
       <button class="btn btn-outline-secondary" data-action="wizard-back" data-testid="wizard-back">
-        <svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-left"></use></svg> Back
+        <svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-left"></use></svg> <span data-i18n="book.back">Back</span>
       </button>
       <div class="d-flex align-items-center gap-3">
         <span class="small text-secondary d-none d-sm-inline" id="wizardStatus" data-testid="wizard-status"></span>
@@ -491,18 +507,18 @@
         <div class="card border-0 shadow-sm text-center">
           <div class="card-body p-4 p-lg-5">
             <div class="display-4 text-primary mb-2"><svg class="ico" aria-hidden="true"><use href="#i-patch-check-fill"></use></svg></div>
-            <h2 class="h3 fw-bold mb-2">Your appointment is confirmed</h2>
-            <p class="text-secondary">We've emailed the details. Please arrive 10 minutes early.</p>
+            <h2 class="h3 fw-bold mb-2" data-i18n="booked.title">Your appointment is confirmed</h2>
+            <p class="text-secondary" data-i18n="booked.sub">We've emailed the details. Please arrive 10 minutes early.</p>
             <div class="bg-brand-soft rounded-3 p-3 p-lg-4 text-start my-4" id="bookedSummary" data-testid="booked-summary"></div>
             <div class="d-flex flex-wrap justify-content-center gap-2 no-print">
               <a href="#/appointments" data-route="appointments" class="btn btn-primary">
-                <svg class="ico me-1" aria-hidden="true"><use href="#i-calendar2-week"></use></svg> View my appointments
+                <svg class="ico me-1" aria-hidden="true"><use href="#i-calendar2-week"></use></svg> <span data-i18n="booked.viewAppts">View my appointments</span>
               </a>
               <button class="btn btn-outline-primary" data-action="chat-about-booking">
-                <svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg> Message my dentist
+                <svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg> <span data-i18n="booked.messageDentist">Message my dentist</span>
               </button>
               <button class="btn btn-outline-secondary" onclick="window.print()">
-                <svg class="ico me-1" aria-hidden="true"><use href="#i-printer"></use></svg> Print
+                <svg class="ico me-1" aria-hidden="true"><use href="#i-printer"></use></svg> <span data-i18n="booked.print">Print</span>
               </button>
             </div>
           </div>
@@ -515,16 +531,16 @@
   <section id="view-appointments" class="view d-none">
     <div class="d-flex flex-wrap gap-2 justify-content-between align-items-end mb-4">
       <div>
-        <h2 class="h3 fw-bold mb-1">My appointments</h2>
-        <p class="text-secondary mb-0">Reschedule, cancel or message your dentist.</p>
+        <h2 class="h3 fw-bold mb-1" data-i18n="appts.title">My appointments</h2>
+        <p class="text-secondary mb-0" data-i18n="appts.sub">Reschedule, cancel or message your dentist.</p>
       </div>
-      <a href="#/book" data-route="book" class="btn btn-primary"><svg class="ico me-1" aria-hidden="true"><use href="#i-plus-lg"></use></svg> New appointment</a>
+      <a href="#/book" data-route="book" class="btn btn-primary"><svg class="ico me-1" aria-hidden="true"><use href="#i-plus-lg"></use></svg> <span data-i18n="appts.new">New appointment</span></a>
     </div>
 
     <ul class="nav nav-pills mb-3" id="apptTabs">
-      <li class="nav-item"><button class="nav-link active" data-appt-tab="upcoming">Upcoming <span class="badge text-bg-light ms-1" id="cntUpcoming" data-testid="appt-count-upcoming">0</span></button></li>
-      <li class="nav-item"><button class="nav-link" data-appt-tab="past">Past <span class="badge text-bg-light ms-1" id="cntPast" data-testid="appt-count-past">0</span></button></li>
-      <li class="nav-item"><button class="nav-link" data-appt-tab="cancelled">Cancelled <span class="badge text-bg-light ms-1" id="cntCancelled" data-testid="appt-count-cancelled">0</span></button></li>
+      <li class="nav-item"><button class="nav-link active" data-appt-tab="upcoming"><span data-i18n="appts.upcoming">Upcoming</span> <span class="badge text-bg-light ms-1" id="cntUpcoming" data-testid="appt-count-upcoming">0</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-appt-tab="past"><span data-i18n="appts.past">Past</span> <span class="badge text-bg-light ms-1" id="cntPast" data-testid="appt-count-past">0</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-appt-tab="cancelled"><span data-i18n="appts.cancelled">Cancelled</span> <span class="badge text-bg-light ms-1" id="cntCancelled" data-testid="appt-count-cancelled">0</span></button></li>
     </ul>
 
     <div id="apptList" class="row g-3" data-testid="appt-list"></div>
@@ -533,8 +549,8 @@
   <!-- ============================== CHAT ============================== -->
   <section id="view-chat" class="view d-none">
     <div class="mb-4">
-      <h2 class="h3 fw-bold mb-1">Chat with a dentist</h2>
-      <p class="text-secondary mb-0">Non-urgent questions only. For emergencies call <strong>1800 555 010</strong>.</p>
+      <h2 class="h3 fw-bold mb-1" data-i18n="chat.title">Chat with a dentist</h2>
+      <p class="text-secondary mb-0" data-i18n-html="chat.sub">Non-urgent questions only. For emergencies call <strong>1800 555 010</strong>.</p>
     </div>
 
     <div class="card border-0 shadow-sm overflow-hidden">
@@ -544,7 +560,7 @@
           <div class="p-3 border-bottom">
             <div class="input-group input-group-sm">
               <span class="input-group-text bg-white"><svg class="ico" aria-hidden="true"><use href="#i-search"></use></svg></span>
-              <input type="search" class="form-control" id="chatSearch" data-testid="chat-search" placeholder="Search dentists">
+              <input type="search" class="form-control" id="chatSearch" data-testid="chat-search" data-i18n-ph="chat.searchPh" placeholder="Search dentists">
             </div>
           </div>
           <div class="list-group list-group-flush chat-thread-list flex-grow-1" id="chatThreads" data-testid="chat-threads"></div>
@@ -557,8 +573,8 @@
           <div class="border-top p-3" id="chatComposerWrap">
             <div class="d-flex flex-wrap gap-2 mb-2" id="chatQuickReplies" data-testid="chat-quick-replies"></div>
             <form class="d-flex gap-2" id="chatForm" autocomplete="off">
-              <input type="text" class="form-control" id="chatInput" data-testid="chat-input" placeholder="Write a message…" maxlength="500">
-              <button class="btn btn-primary" type="submit" aria-label="Send message" data-testid="chat-send">
+              <input type="text" class="form-control" id="chatInput" data-testid="chat-input" data-i18n-ph="chat.inputPh" placeholder="Write a message…" maxlength="500">
+              <button class="btn btn-primary" type="submit" data-i18n-aria="chat.send" aria-label="Send message" data-testid="chat-send">
                 <svg class="ico" aria-hidden="true"><use href="#i-send-fill"></use></svg>
               </button>
             </form>
@@ -573,107 +589,107 @@
     <div class="row justify-content-center">
       <div class="col-lg-9">
         <div class="mb-4">
-          <h2 class="h3 fw-bold mb-1">Register as a patient</h2>
-          <p class="text-secondary mb-0">Takes about a minute. Your details stay in this browser — this is a prototype.</p>
+          <h2 class="h3 fw-bold mb-1" data-i18n="reg.title">Register as a patient</h2>
+          <p class="text-secondary mb-0" data-i18n="reg.sub">Takes about a minute. Your details stay in this browser — this is a prototype.</p>
         </div>
 
         <form class="card border-0 shadow-sm needs-validation" id="registerForm" novalidate>
           <div class="card-body p-4">
-            <h6 class="fw-semibold text-uppercase small text-secondary mb-3">Personal details</h6>
+            <h6 class="fw-semibold text-uppercase small text-secondary mb-3" data-i18n="reg.personal">Personal details</h6>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
-                <label for="regFirst" class="form-label">First name</label>
+                <label for="regFirst" class="form-label" data-i18n="reg.first">First name</label>
                 <input type="text" class="form-control" id="regFirst" data-testid="reg-first" required>
-                <div class="invalid-feedback">Please enter your first name.</div>
+                <div class="invalid-feedback" data-i18n="reg.firstErr">Please enter your first name.</div>
               </div>
               <div class="col-md-6">
-                <label for="regLast" class="form-label">Last name</label>
+                <label for="regLast" class="form-label" data-i18n="reg.last">Last name</label>
                 <input type="text" class="form-control" id="regLast" data-testid="reg-last" required>
-                <div class="invalid-feedback">Please enter your last name.</div>
+                <div class="invalid-feedback" data-i18n="reg.lastErr">Please enter your last name.</div>
               </div>
               <div class="col-md-6">
-                <label for="regDob" class="form-label">Date of birth</label>
+                <label for="regDob" class="form-label" data-i18n="reg.dob">Date of birth</label>
                 <input type="date" class="form-control" id="regDob" data-testid="reg-dob" required>
-                <div class="invalid-feedback">Please enter a valid date of birth.</div>
+                <div class="invalid-feedback" data-i18n="reg.dobErr">Please enter a valid date of birth.</div>
               </div>
               <div class="col-md-6">
-                <label for="regGender" class="form-label">Gender</label>
+                <label for="regGender" class="form-label" data-i18n="reg.gender">Gender</label>
                 <select class="form-select" id="regGender">
-                  <option value="">Prefer not to say</option>
-                  <option>Female</option>
-                  <option>Male</option>
-                  <option>Non-binary</option>
+                  <option value="" data-i18n="reg.genderNone">Prefer not to say</option>
+                  <option value="Female" data-i18n="reg.genderFemale">Female</option>
+                  <option value="Male" data-i18n="reg.genderMale">Male</option>
+                  <option value="Non-binary" data-i18n="reg.genderNonBinary">Non-binary</option>
                 </select>
               </div>
             </div>
 
-            <h6 class="fw-semibold text-uppercase small text-secondary mb-3">Contact</h6>
+            <h6 class="fw-semibold text-uppercase small text-secondary mb-3" data-i18n="reg.contact">Contact</h6>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
-                <label for="regEmail" class="form-label">Email address</label>
+                <label for="regEmail" class="form-label" data-i18n="reg.email">Email address</label>
                 <input type="email" class="form-control" id="regEmail" data-testid="reg-email" required>
-                <div class="invalid-feedback" id="regEmailFeedback" data-testid="reg-email-feedback">Please enter a valid email address.</div>
+                <div class="invalid-feedback" id="regEmailFeedback" data-testid="reg-email-feedback" data-i18n="reg.emailErr">Please enter a valid email address.</div>
               </div>
               <div class="col-md-6">
-                <label for="regPhone" class="form-label">Mobile number</label>
+                <label for="regPhone" class="form-label" data-i18n="reg.phone">Mobile number</label>
                 <input type="tel" class="form-control" id="regPhone" data-testid="reg-phone" pattern="[0-9\(\)\+\- ]{8,20}" required
-                       placeholder="04xx xxx xxx">
-                <div class="invalid-feedback">Please enter a contactable mobile number.</div>
+                       data-i18n-ph="reg.phonePh" placeholder="04xx xxx xxx">
+                <div class="invalid-feedback" data-i18n="reg.phoneErr">Please enter a contactable mobile number.</div>
               </div>
               <div class="col-12">
-                <label for="regAddress" class="form-label">Home address <span class="text-secondary fw-normal">(optional)</span></label>
+                <label for="regAddress" class="form-label"><span data-i18n="reg.address">Home address</span> <span class="text-secondary fw-normal" data-i18n="book.optional">(optional)</span></label>
                 <input type="text" class="form-control" id="regAddress">
               </div>
             </div>
 
-            <h6 class="fw-semibold text-uppercase small text-secondary mb-3">Medical &amp; insurance</h6>
+            <h6 class="fw-semibold text-uppercase small text-secondary mb-3" data-i18n="reg.medical">Medical &amp; insurance</h6>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
-                <label for="regInsurer" class="form-label">Health fund <span class="text-secondary fw-normal">(optional)</span></label>
-                <input type="text" class="form-control" id="regInsurer" placeholder="e.g. Medibank">
+                <label for="regInsurer" class="form-label"><span data-i18n="reg.insurer">Health fund</span> <span class="text-secondary fw-normal" data-i18n="book.optional">(optional)</span></label>
+                <input type="text" class="form-control" id="regInsurer" data-i18n-ph="reg.insurerPh" placeholder="e.g. Medibank">
               </div>
               <div class="col-md-6">
-                <label for="regMember" class="form-label">Membership number <span class="text-secondary fw-normal">(optional)</span></label>
+                <label for="regMember" class="form-label"><span data-i18n="reg.member">Membership number</span> <span class="text-secondary fw-normal" data-i18n="book.optional">(optional)</span></label>
                 <input type="text" class="form-control" id="regMember">
               </div>
               <div class="col-12">
-                <label for="regNotes" class="form-label">Allergies, medications or conditions we should know about</label>
+                <label for="regNotes" class="form-label" data-i18n="reg.notes">Allergies, medications or conditions we should know about</label>
                 <textarea class="form-control" id="regNotes" rows="2" maxlength="400"
-                          placeholder="e.g. Penicillin allergy, taking blood thinners"></textarea>
+                          data-i18n-ph="reg.notesPh" placeholder="e.g. Penicillin allergy, taking blood thinners"></textarea>
               </div>
             </div>
 
-            <h6 class="fw-semibold text-uppercase small text-secondary mb-3">Account security</h6>
+            <h6 class="fw-semibold text-uppercase small text-secondary mb-3" data-i18n="reg.security">Account security</h6>
             <div class="row g-3 mb-4">
               <div class="col-md-6">
-                <label for="regPassword" class="form-label">Password</label>
+                <label for="regPassword" class="form-label" data-i18n="reg.password">Password</label>
                 <input type="password" class="form-control" id="regPassword" data-testid="reg-password" minlength="8" required>
-                <div class="form-text">At least 8 characters.</div>
-                <div class="invalid-feedback">Use at least 8 characters.</div>
+                <div class="form-text" data-i18n="reg.passwordHelp">At least 8 characters.</div>
+                <div class="invalid-feedback" data-i18n="reg.passwordErr">Use at least 8 characters.</div>
               </div>
               <div class="col-md-6">
-                <label for="regPassword2" class="form-label">Confirm password</label>
+                <label for="regPassword2" class="form-label" data-i18n="reg.password2">Confirm password</label>
                 <input type="password" class="form-control" id="regPassword2" data-testid="reg-password2" required>
-                <div class="invalid-feedback" id="regPassword2Feedback" data-testid="reg-password2-feedback">Please confirm your password.</div>
+                <div class="invalid-feedback" id="regPassword2Feedback" data-testid="reg-password2-feedback" data-i18n="reg.password2Err">Please confirm your password.</div>
               </div>
             </div>
 
             <div class="form-check mb-2">
               <input class="form-check-input" type="checkbox" id="regConsent" data-testid="reg-consent" required>
-              <label class="form-check-label" for="regConsent">
+              <label class="form-check-label" for="regConsent" data-i18n="reg.consent">
                 I consent to BrightSmile Dental storing my details for treatment purposes.
               </label>
-              <div class="invalid-feedback">We need your consent to create the record.</div>
+              <div class="invalid-feedback" data-i18n="reg.consentErr">We need your consent to create the record.</div>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="regMarketing">
-              <label class="form-check-label" for="regMarketing">Send me check-up reminders and clinic news.</label>
+              <label class="form-check-label" for="regMarketing" data-i18n="reg.marketing">Send me check-up reminders and clinic news.</label>
             </div>
           </div>
           <div class="card-footer bg-white border-top p-4 d-flex flex-wrap gap-2 justify-content-between align-items-center">
-            <span class="small text-secondary">Already registered? <a href="#/login" data-route="login" class="link-primary">Sign in</a></span>
+            <span class="small text-secondary"><span data-i18n="reg.already">Already registered?</span> <a href="#/login" data-route="login" class="link-primary" data-i18n="nav.signIn">Sign in</a></span>
             <button type="submit" class="btn btn-primary btn-lg" data-testid="register-submit">
-              <svg class="ico me-1" aria-hidden="true"><use href="#i-person-check"></use></svg> Create my patient record
+              <svg class="ico me-1" aria-hidden="true"><use href="#i-person-check"></use></svg> <span data-i18n="reg.submit">Create my patient record</span>
             </button>
           </div>
         </form>
@@ -688,34 +704,34 @@
         <div class="alert alert-warning d-none" id="loginPrompt" data-testid="login-prompt"></div>
         <div class="card border-0 shadow-sm">
           <div class="card-body p-4">
-            <h2 class="h4 fw-bold mb-1">Patient sign in</h2>
-            <p class="text-secondary small mb-4">Access your bookings, records and messages.</p>
+            <h2 class="h4 fw-bold mb-1" data-i18n="login.title">Patient sign in</h2>
+            <p class="text-secondary small mb-4" data-i18n="login.sub">Access your bookings, records and messages.</p>
 
             <form id="loginForm" class="needs-validation" novalidate>
               <div class="mb-3">
-                <label for="loginEmail" class="form-label">Email address</label>
+                <label for="loginEmail" class="form-label" data-i18n="reg.email">Email address</label>
                 <input type="email" class="form-control" id="loginEmail" data-testid="login-email" required>
-                <div class="invalid-feedback">Enter the email you registered with.</div>
+                <div class="invalid-feedback" data-i18n="login.emailErr">Enter the email you registered with.</div>
               </div>
               <div class="mb-3">
-                <label for="loginPassword" class="form-label">Password</label>
+                <label for="loginPassword" class="form-label" data-i18n="reg.password">Password</label>
                 <input type="password" class="form-control" id="loginPassword" data-testid="login-password" required>
-                <div class="invalid-feedback">Enter your password.</div>
+                <div class="invalid-feedback" data-i18n="login.passwordErr">Enter your password.</div>
               </div>
               <div class="alert alert-danger py-2 small d-none" id="loginError" data-testid="login-error"></div>
-              <button class="btn btn-primary w-100" type="submit" data-testid="login-submit">Sign in</button>
+              <button class="btn btn-primary w-100" type="submit" data-testid="login-submit" data-i18n="login.submit">Sign in</button>
             </form>
 
             <hr class="my-4">
             <div class="bg-brand-soft rounded-3 p-3 small">
-              <div class="fw-semibold mb-1"><svg class="ico me-1" aria-hidden="true"><use href="#i-info-circle"></use></svg> Prototype demo account</div>
+              <div class="fw-semibold mb-1"><svg class="ico me-1" aria-hidden="true"><use href="#i-info-circle"></use></svg> <span data-i18n="login.demoAccount">Prototype demo account</span></div>
               <div class="d-flex justify-content-between align-items-center gap-2">
                 <code>demo@brightsmile.test / demo1234</code>
-                <button class="btn btn-sm btn-outline-primary" data-action="fill-demo" data-testid="fill-demo">Use it</button>
+                <button class="btn btn-sm btn-outline-primary" data-action="fill-demo" data-testid="fill-demo" data-i18n="login.useIt">Use it</button>
               </div>
             </div>
             <p class="text-center small text-secondary mt-3 mb-0">
-              New patient? <a href="#/register" data-route="register" class="link-primary">Register here</a>
+              <span data-i18n="login.newPatient">New patient?</span> <a href="#/register" data-route="register" class="link-primary" data-i18n="login.registerHere">Register here</a>
             </p>
           </div>
         </div>
@@ -728,8 +744,8 @@
     <div class="row justify-content-center">
       <div class="col-lg-8">
         <div class="mb-4">
-          <h2 class="h3 fw-bold mb-1">My profile</h2>
-          <p class="text-secondary mb-0">Keep your contact and medical details up to date.</p>
+          <h2 class="h3 fw-bold mb-1" data-i18n="profile.title">My profile</h2>
+          <p class="text-secondary mb-0" data-i18n="profile.sub">Keep your contact and medical details up to date.</p>
         </div>
         <div id="profileBody" data-testid="profile-body"></div>
       </div>
@@ -748,40 +764,40 @@
           BrightSmile Dental
         </div>
         <p class="small text-secondary mb-0">
-          12 Marine Parade, Southbank · <a href="tel:1800555010" class="link-secondary">1800 555 010</a><br>
-          Mon–Fri 09:00–17:00 · Sat 09:00–13:00 · Sun closed
+          <span data-i18n="top.address">12 Marine Parade, Southbank</span> · <a href="tel:1800555010" class="link-secondary">1800 555 010</a><br>
+          <span data-i18n="footer.hours">Mon–Fri 09:00–17:00 · Sat 09:00–13:00 · Sun closed</span>
         </p>
       </div>
       <div class="col-6 col-lg-2">
-        <h6 class="small fw-semibold text-uppercase text-secondary">Patients</h6>
+        <h6 class="small fw-semibold text-uppercase text-secondary" data-i18n="footer.patients">Patients</h6>
         <ul class="list-unstyled small mb-0">
-          <li><a href="#/register" data-route="register" class="link-secondary text-decoration-none">Register</a></li>
-          <li><a href="#/book" data-route="book" class="link-secondary text-decoration-none">Book a visit</a></li>
-          <li><a href="#/appointments" data-route="appointments" class="link-secondary text-decoration-none">My appointments</a></li>
+          <li><a href="#/register" data-route="register" class="link-secondary text-decoration-none" data-i18n="footer.register">Register</a></li>
+          <li><a href="#/book" data-route="book" class="link-secondary text-decoration-none" data-i18n="footer.bookVisit">Book a visit</a></li>
+          <li><a href="#/appointments" data-route="appointments" class="link-secondary text-decoration-none" data-i18n="footer.myAppts">My appointments</a></li>
         </ul>
       </div>
       <div class="col-6 col-lg-2">
-        <h6 class="small fw-semibold text-uppercase text-secondary">Clinic</h6>
+        <h6 class="small fw-semibold text-uppercase text-secondary" data-i18n="footer.clinic">Clinic</h6>
         <ul class="list-unstyled small mb-0">
-          <li><a href="#/services" data-route="services" class="link-secondary text-decoration-none">Services</a></li>
-          <li><a href="#/chat" data-route="chat" class="link-secondary text-decoration-none">Chat with a dentist</a></li>
+          <li><a href="#/services" data-route="services" class="link-secondary text-decoration-none" data-i18n="footer.services">Services</a></li>
+          <li><a href="#/chat" data-route="chat" class="link-secondary text-decoration-none" data-i18n="footer.chat">Chat with a dentist</a></li>
         </ul>
       </div>
       <div class="col-lg-4">
-        <h6 class="small fw-semibold text-uppercase text-secondary">Prototype notes</h6>
-        <p class="small text-secondary mb-2">
+        <h6 class="small fw-semibold text-uppercase text-secondary" data-i18n="footer.notes">Prototype notes</h6>
+        <p class="small text-secondary mb-2" data-i18n="footer.notesBody">
           Clickable prototype for demo purposes. Data is stored in this browser only (localStorage);
           no server, no real patient records.
         </p>
         <button class="btn btn-sm btn-outline-secondary" data-action="reset-demo" data-testid="reset-demo">
-          <svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-counterclockwise"></use></svg> Reset demo data
+          <svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-counterclockwise"></use></svg> <span data-i18n="footer.reset">Reset demo data</span>
         </button>
       </div>
     </div>
   </div>
 </footer>
 
-<span class="badge text-bg-dark proto-badge no-print">Prototype</span>
+<span class="badge text-bg-dark proto-badge no-print" data-i18n="footer.protoBadge">Prototype</span>
 
 <!-- ============================== MODALS ============================== -->
 
@@ -790,13 +806,13 @@
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0">
       <div class="modal-header">
-        <h5 class="modal-title" id="serviceModalTitle">Service</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="serviceModalTitle" data-i18n="modal.service">Service</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-testid="modal-close-x" data-i18n-aria="modal.close" aria-label="Close"></button>
       </div>
       <div class="modal-body" id="serviceModalBody" data-testid="service-modal-body"></div>
       <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        <button class="btn btn-primary" id="serviceModalBook" data-action="book-service" data-testid="service-modal-book"><svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> Book this treatment</button>
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="modal.close">Close</button>
+        <button class="btn btn-primary" id="serviceModalBook" data-action="book-service" data-testid="service-modal-book"><svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> <span data-i18n="modal.bookThis">Book this treatment</span></button>
       </div>
     </div>
   </div>
@@ -807,13 +823,13 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0">
       <div class="modal-header">
-        <h5 class="modal-title" id="dentistModalTitle">Dentist</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="dentistModalTitle" data-i18n="modal.dentist">Dentist</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-testid="modal-close-x" data-i18n-aria="modal.close" aria-label="Close"></button>
       </div>
       <div class="modal-body" id="dentistModalBody"></div>
       <div class="modal-footer">
-        <button class="btn btn-outline-primary" id="dentistModalChat" data-action="open-chat"><svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg> Message</button>
-        <button class="btn btn-primary" id="dentistModalBook" data-action="book-dentist"><svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> Book with this dentist</button>
+        <button class="btn btn-outline-primary" id="dentistModalChat" data-action="open-chat"><svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg> <span data-i18n="modal.message">Message</span></button>
+        <button class="btn btn-primary" id="dentistModalBook" data-action="book-dentist"><svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg> <span data-i18n="modal.bookWith">Book with this dentist</span></button>
       </div>
     </div>
   </div>
@@ -824,19 +840,19 @@
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0">
       <div class="modal-header">
-        <h5 class="modal-title">Reschedule appointment</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" data-i18n="resched.title">Reschedule appointment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-testid="modal-close-x" data-i18n-aria="modal.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p class="small text-secondary" id="rescheduleContext"></p>
-        <label class="form-label small fw-semibold text-secondary text-uppercase">New date</label>
+        <label class="form-label small fw-semibold text-secondary text-uppercase" data-i18n="resched.newDate">New date</label>
         <div class="date-strip mb-4" id="rescheduleDates" data-testid="reschedule-dates"></div>
-        <label class="form-label small fw-semibold text-secondary text-uppercase">New time</label>
+        <label class="form-label small fw-semibold text-secondary text-uppercase" data-i18n="resched.newTime">New time</label>
         <div id="rescheduleSlots" data-testid="reschedule-slots"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep current time</button>
-        <button class="btn btn-primary" id="rescheduleSave" data-testid="reschedule-save" disabled>Confirm new time</button>
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="resched.keep">Keep current time</button>
+        <button class="btn btn-primary" id="rescheduleSave" data-testid="reschedule-save" data-i18n="resched.save" disabled>Confirm new time</button>
       </div>
     </div>
   </div>
@@ -847,23 +863,23 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0">
       <div class="modal-header">
-        <h5 class="modal-title">Cancel appointment?</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" data-i18n="cancelModal.title">Cancel appointment?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" data-testid="modal-close-x" data-i18n-aria="modal.close" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <p id="cancelContext" class="mb-3"></p>
-        <label for="cancelReason" class="form-label small">Reason <span class="text-secondary">(optional)</span></label>
+        <label for="cancelReason" class="form-label small"><span data-i18n="cancelModal.reason">Reason</span> <span class="text-secondary" data-i18n="book.optional">(optional)</span></label>
         <select class="form-select" id="cancelReason" data-testid="cancel-reason">
-          <option value="">Prefer not to say</option>
-          <option>Schedule conflict</option>
-          <option>Feeling better</option>
-          <option>Cost concerns</option>
-          <option>Booked at another clinic</option>
+          <option value="" data-i18n="cancelModal.reasonNone">Prefer not to say</option>
+          <option value="Schedule conflict" data-i18n="cancelModal.reasonConflict">Schedule conflict</option>
+          <option value="Feeling better" data-i18n="cancelModal.reasonBetter">Feeling better</option>
+          <option value="Cost concerns" data-i18n="cancelModal.reasonCost">Cost concerns</option>
+          <option value="Booked at another clinic" data-i18n="cancelModal.reasonOther">Booked at another clinic</option>
         </select>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep appointment</button>
-        <button class="btn btn-danger" id="cancelConfirm" data-testid="cancel-confirm">Yes, cancel it</button>
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="cancelModal.keep">Keep appointment</button>
+        <button class="btn btn-danger" id="cancelConfirm" data-testid="cancel-confirm" data-i18n="cancelModal.confirm">Yes, cancel it</button>
       </div>
     </div>
   </div>
@@ -878,141 +894,679 @@
   'use strict';
 
   /* =====================================================================
+   * Translations
+   *
+   * One entry per string, each carrying both languages, so a key can never
+   * exist in one language and be missing from the other. Static markup pulls
+   * from here through data-i18n attributes; everything rendered at runtime
+   * calls t(). {placeholders} are filled from the vars argument.
+   * ===================================================================*/
+  const STRINGS = {
+    /* --- chrome ------------------------------------------------------- */
+    'top.back': { en: '← All prototypes', th: '← ต้นแบบทั้งหมด' },
+    'top.address': { en: '12 Marine Parade, Southbank', th: '12 มารีนพาเหรด เซาท์แบงก์' },
+    'top.emergency': { en: 'Emergencies:', th: 'ฉุกเฉิน:' },
+    'top.langLabel': { en: 'Language', th: 'ภาษา' },
+    'top.langEn': { en: 'EN', th: 'EN' },
+    'top.langTh': { en: 'ไทย', th: 'ไทย' },
+
+    'nav.toggle': { en: 'Toggle navigation', th: 'เปิดปิดเมนู' },
+    'nav.home': { en: 'Home', th: 'หน้าแรก' },
+    'nav.services': { en: 'Services', th: 'บริการ' },
+    'nav.book': { en: 'Book Appointment', th: 'นัดหมาย' },
+    'nav.appointments': { en: 'My Appointments', th: 'นัดของฉัน' },
+    'nav.chat': { en: 'Chat with a Dentist', th: 'แชทกับทันตแพทย์' },
+    'nav.signIn': { en: 'Sign in', th: 'เข้าสู่ระบบ' },
+    'nav.register': { en: 'Register', th: 'ลงทะเบียน' },
+    'nav.profile': { en: 'My profile', th: 'โปรไฟล์ของฉัน' },
+    'nav.messages': { en: 'Messages', th: 'ข้อความ' },
+    'nav.signOut': { en: 'Sign out', th: 'ออกจากระบบ' },
+
+    /* --- home --------------------------------------------------------- */
+    'home.openToday': { en: 'Open today · 09:00–17:00', th: 'เปิดวันนี้ · 09:00–17:00 น.' },
+    'home.title': { en: 'A healthier smile, booked in under a minute.', th: 'รอยยิ้มสุขภาพดี นัดได้ในไม่ถึงหนึ่งนาที' },
+    'home.lead': {
+      en: 'Register as a patient, browse our treatments, pick a dentist and a time that suits you, and message your dentist any time — all from one place.',
+      th: 'ลงทะเบียนเป็นผู้ป่วย ดูรายการรักษา เลือกทันตแพทย์และเวลาที่สะดวก และส่งข้อความหาทันตแพทย์ได้ทุกเมื่อ — ครบในที่เดียว'
+    },
+    'home.ctaBook': { en: 'Book an appointment', th: 'นัดหมาย' },
+    'home.ctaRegister': { en: 'Register as a patient', th: 'ลงทะเบียนผู้ป่วย' },
+    'home.statPatientsValue': { en: '12k+', th: '12,000+' },
+    'home.statPatients': { en: 'Happy patients', th: 'ผู้ป่วยที่พึงพอใจ' },
+    'home.statDentists': { en: 'Specialist dentists', th: 'ทันตแพทย์เฉพาะทาง' },
+    'home.statRating': { en: 'Average rating', th: 'คะแนนเฉลี่ย' },
+    'home.statEmergency': { en: 'Emergency line', th: 'สายด่วนฉุกเฉิน' },
+
+    'home.quickBook': { en: 'Book a schedule', th: 'จองคิวนัด' },
+    'home.quickBookDesc': { en: 'Choose a treatment, dentist, date and time slot.', th: 'เลือกการรักษา ทันตแพทย์ วันและเวลา' },
+    'home.quickRegister': { en: 'Register as patient', th: 'ลงทะเบียนผู้ป่วย' },
+    'home.quickRegisterDesc': { en: 'Create your patient record and medical profile.', th: 'สร้างประวัติผู้ป่วยและข้อมูลสุขภาพของคุณ' },
+    'home.quickServices': { en: 'Browse services', th: 'ดูบริการ' },
+    'home.quickServicesDesc': { en: 'Treatments, durations and transparent pricing.', th: 'รายการรักษา ระยะเวลา และราคาที่ชัดเจน' },
+    'home.quickChat': { en: 'Chat with a dentist', th: 'แชทกับทันตแพทย์' },
+    'home.quickChatDesc': { en: 'Ask a question before you come in.', th: 'สอบถามก่อนเข้ามาที่คลินิก' },
+
+    'home.popular': { en: 'Popular treatments', th: 'การรักษายอดนิยม' },
+    'home.popularSub': { en: 'Our most requested services this month.', th: 'บริการที่มีผู้ขอรับมากที่สุดในเดือนนี้' },
+    'home.viewAll': { en: 'View all', th: 'ดูทั้งหมด' },
+    'home.team': { en: 'Meet the team', th: 'ทีมทันตแพทย์' },
+    'home.teamSub': { en: 'Pick the dentist you feel most comfortable with.', th: 'เลือกทันตแพทย์ที่คุณสบายใจที่สุด' },
+
+    /* --- services ----------------------------------------------------- */
+    'services.title': { en: 'Clinic services', th: 'บริการของคลินิก' },
+    'services.sub': { en: 'Browse our treatments, then book the one you need.', th: 'ดูรายการรักษาของเรา แล้วจองรายการที่คุณต้องการ' },
+    'services.searchPh': { en: 'Search treatments, e.g. whitening, braces', th: 'ค้นหาการรักษา เช่น ฟอกสีฟัน จัดฟัน' },
+    'services.empty': { en: 'No treatments match your search.', th: 'ไม่พบการรักษาที่ตรงกับคำค้นหา' },
+    'services.from': { en: 'from {price}', th: 'เริ่มต้น {price}' },
+    'services.minutes': { en: '{n} min', th: '{n} นาที' },
+    'services.aboutMinutes': { en: 'about {n} minutes', th: 'ประมาณ {n} นาที' },
+    'services.book': { en: 'Book', th: 'จอง' },
+    'services.details': { en: 'Details', th: 'รายละเอียด' },
+
+    /* Category names double as data keys, so only the label is translated. */
+    'cat.All': { en: 'All', th: 'ทั้งหมด' },
+    'cat.Preventive': { en: 'Preventive', th: 'ทันตกรรมป้องกัน' },
+    'cat.Cosmetic': { en: 'Cosmetic', th: 'ทันตกรรมความงาม' },
+    'cat.Surgical': { en: 'Surgical', th: 'ศัลยกรรมช่องปาก' },
+    'cat.Orthodontics': { en: 'Orthodontics', th: 'ทันตกรรมจัดฟัน' },
+    'cat.Family': { en: 'Family', th: 'ทันตกรรมครอบครัว' },
+    'cat.Urgent': { en: 'Urgent', th: 'ฉุกเฉิน' },
+    'cat.Restorative': { en: 'Restorative', th: 'ทันตกรรมบูรณะ' },
+
+    'spoken.English': { en: 'English', th: 'อังกฤษ' },
+    'spoken.Thai': { en: 'Thai', th: 'ไทย' },
+    'spoken.Mandarin': { en: 'Mandarin', th: 'จีนกลาง' },
+    'spoken.French': { en: 'French', th: 'ฝรั่งเศส' },
+    'spoken.Italian': { en: 'Italian', th: 'อิตาลี' },
+    'spoken.Hindi': { en: 'Hindi', th: 'ฮินดี' },
+    'spoken.Gujarati': { en: 'Gujarati', th: 'คุชราต' },
+    'spoken.Vietnamese': { en: 'Vietnamese', th: 'เวียดนาม' },
+
+    /* --- booking wizard ----------------------------------------------- */
+    'book.title': { en: 'Book an appointment', th: 'นัดหมาย' },
+    'book.sub': { en: 'Four quick steps — treatment, dentist, time, confirm.', th: 'สี่ขั้นตอนง่าย ๆ — การรักษา ทันตแพทย์ เวลา ยืนยัน' },
+    'book.step1': { en: 'Treatment', th: 'การรักษา' },
+    'book.step2': { en: 'Dentist', th: 'ทันตแพทย์' },
+    'book.step3': { en: 'Date & time', th: 'วันและเวลา' },
+    'book.step4': { en: 'Confirm', th: 'ยืนยัน' },
+    'book.step1Title': { en: '1. Which treatment do you need?', th: '1. คุณต้องการรักษาอะไร' },
+    'book.step2Title': { en: '2. Choose your dentist', th: '2. เลือกทันตแพทย์' },
+    'book.step2ShowAll': { en: 'Show all dentists, not just specialists for this treatment', th: 'แสดงทันตแพทย์ทั้งหมด ไม่เฉพาะผู้เชี่ยวชาญด้านนี้' },
+    'book.step2Hint': { en: 'Showing dentists who provide {service} ({category}).', th: 'แสดงทันตแพทย์ที่ให้บริการ {service} ({category})' },
+    'book.step3Title': { en: '3. Pick a date and time', th: '3. เลือกวันและเวลา' },
+    'book.step3Hint': { en: '{service} with {dentist} · about {n} minutes in the chair.', th: '{service} กับ {dentist} · ใช้เวลาบนเก้าอี้ประมาณ {n} นาที' },
+    'book.dates': { en: 'Available dates', th: 'วันที่ว่าง' },
+    'book.times': { en: 'Available times', th: 'เวลาที่ว่าง' },
+    'book.pickDateFirst': { en: 'Choose a date first.', th: 'กรุณาเลือกวันก่อน' },
+    'book.noTimesLeft': { en: 'No times left on {date}. Please pick another date.', th: 'ไม่มีเวลาว่างในวันที่ {date} กรุณาเลือกวันอื่น' },
+    'book.fullyBookedMonths': { en: 'This dentist is fully booked for the next two months.', th: 'ทันตแพทย์ท่านนี้มีคิวเต็มในอีกสองเดือนข้างหน้า' },
+    'book.slotsFree': { en: '{n} free', th: 'ว่าง {n}' },
+    'book.reason': { en: 'Reason for visit', th: 'เหตุผลในการเข้าพบ' },
+    'book.optional': { en: '(optional)', th: '(ไม่บังคับ)' },
+    'book.reasonPh': { en: 'e.g. Sharp pain in my lower left molar when chewing', th: 'เช่น ปวดแปลบที่ฟันกรามล่างซ้ายเวลาเคี้ยว' },
+    'book.step4Title': { en: '4. Review and confirm', th: '4. ตรวจสอบและยืนยัน' },
+    'book.bookingFor': { en: 'Booking for', th: 'จองในชื่อ' },
+    'book.agree': { en: 'I understand that cancellations within 24 hours of the appointment may incur a fee.', th: 'ข้าพเจ้ารับทราบว่าการยกเลิกภายใน 24 ชั่วโมงก่อนเวลานัดอาจมีค่าธรรมเนียม' },
+    'book.reminder': { en: 'Send me an SMS reminder the day before.', th: 'ส่ง SMS เตือนล่วงหน้าหนึ่งวัน' },
+    'book.back': { en: 'Back', th: 'ย้อนกลับ' },
+    'book.continue': { en: 'Continue', th: 'ต่อไป' },
+    'book.confirm': { en: 'Confirm booking', th: 'ยืนยันการนัด' },
+    'book.needService': { en: 'Select a treatment to continue', th: 'เลือกการรักษาเพื่อไปต่อ' },
+    'book.needDentist': { en: 'Select a dentist to continue', th: 'เลือกทันตแพทย์เพื่อไปต่อ' },
+    'book.needSlot': { en: 'Select a date and time to continue', th: 'เลือกวันและเวลาเพื่อไปต่อ' },
+    'book.selected': { en: '{name} selected', th: 'เลือก {name} แล้ว' },
+    'book.slotSelected': { en: '{date} at {time}', th: '{date} เวลา {time}' },
+    'book.checkDetails': { en: 'Check the details, then confirm', th: 'ตรวจสอบรายละเอียด แล้วกดยืนยัน' },
+    'book.apptDetails': { en: 'Appointment details', th: 'รายละเอียดการนัด' },
+    'book.date': { en: 'Date', th: 'วันที่' },
+    'book.time': { en: 'Time', th: 'เวลา' },
+    'book.location': { en: 'Location', th: 'สถานที่' },
+    'book.estFee': { en: 'Estimated fee', th: 'ค่าใช้จ่ายประมาณ' },
+    'book.beforeRebate': { en: 'before health-fund rebate', th: 'ก่อนหักส่วนลดจากกองทุนสุขภาพ' },
+    'book.yourNotes': { en: 'Your notes', th: 'บันทึกของคุณ' },
+    'book.needRecord': { en: 'You need a patient record to confirm.', th: 'คุณต้องมีประวัติผู้ป่วยก่อนยืนยันการนัด' },
+    'book.nextFree': { en: 'Next free {date}', th: 'ว่างครั้งถัดไป {date}' },
+    'book.fullyBooked': { en: 'Fully booked', th: 'คิวเต็ม' },
+
+    /* --- booking confirmation ----------------------------------------- */
+    'booked.title': { en: 'Your appointment is confirmed', th: 'ยืนยันการนัดของคุณแล้ว' },
+    'booked.sub': { en: "We've emailed the details. Please arrive 10 minutes early.", th: 'เราได้ส่งรายละเอียดไปทางอีเมลแล้ว กรุณามาถึงก่อนเวลา 10 นาที' },
+    'booked.ref': { en: 'Reference', th: 'รหัสอ้างอิง' },
+    'booked.patient': { en: 'Patient', th: 'ผู้ป่วย' },
+    'booked.treatment': { en: 'Treatment', th: 'การรักษา' },
+    'booked.dentist': { en: 'Dentist', th: 'ทันตแพทย์' },
+    'booked.when': { en: 'When', th: 'เมื่อ' },
+    'booked.where': { en: 'Where', th: 'ที่' },
+    'booked.viewAppts': { en: 'View my appointments', th: 'ดูนัดของฉัน' },
+    'booked.messageDentist': { en: 'Message my dentist', th: 'ส่งข้อความหาทันตแพทย์' },
+    'booked.print': { en: 'Print', th: 'พิมพ์' },
+    'booked.at': { en: '{date} at {time}', th: '{date} เวลา {time}' },
+
+    /* --- my appointments ---------------------------------------------- */
+    'appts.title': { en: 'My appointments', th: 'นัดของฉัน' },
+    'appts.sub': { en: 'Reschedule, cancel or message your dentist.', th: 'เลื่อนนัด ยกเลิก หรือส่งข้อความหาทันตแพทย์' },
+    'appts.new': { en: 'New appointment', th: 'นัดใหม่' },
+    'appts.upcoming': { en: 'Upcoming', th: 'ที่กำลังจะถึง' },
+    'appts.past': { en: 'Past', th: 'ที่ผ่านมา' },
+    'appts.cancelled': { en: 'Cancelled', th: 'ที่ยกเลิก' },
+    'appts.statusConfirmed': { en: 'Confirmed', th: 'ยืนยันแล้ว' },
+    'appts.statusCompleted': { en: 'Completed', th: 'เสร็จสิ้น' },
+    'appts.statusCancelled': { en: 'Cancelled', th: 'ยกเลิกแล้ว' },
+    'appts.refShort': { en: 'Ref {ref}', th: 'รหัส {ref}' },
+    'appts.today': { en: 'today', th: 'วันนี้' },
+    'appts.tomorrow': { en: 'tomorrow', th: 'พรุ่งนี้' },
+    'appts.inDays': { en: 'in {n} days', th: 'อีก {n} วัน' },
+    'appts.reschedule': { en: 'Reschedule', th: 'เลื่อนนัด' },
+    'appts.cancel': { en: 'Cancel', th: 'ยกเลิก' },
+    'appts.rebook': { en: 'Book again', th: 'จองอีกครั้ง' },
+    'appts.message': { en: 'Message', th: 'ส่งข้อความ' },
+    'appts.emptyUpcoming': { en: 'No upcoming appointments', th: 'ไม่มีนัดที่กำลังจะถึง' },
+    'appts.emptyUpcomingSub': { en: 'Book a visit and it will show up here.', th: 'เมื่อคุณจองนัด รายการจะแสดงที่นี่' },
+    'appts.emptyPast': { en: 'No past visits yet', th: 'ยังไม่มีประวัติการเข้ารับบริการ' },
+    'appts.emptyPastSub': { en: 'Your treatment history will appear here after your first visit.', th: 'ประวัติการรักษาจะแสดงที่นี่หลังการเข้าพบครั้งแรก' },
+    'appts.emptyCancelled': { en: 'Nothing cancelled', th: 'ไม่มีรายการที่ยกเลิก' },
+    'appts.emptyCancelledSub': { en: 'Cancelled appointments are kept here for your records.', th: 'นัดที่ยกเลิกจะถูกเก็บไว้ที่นี่เป็นหลักฐาน' },
+
+    /* --- chat --------------------------------------------------------- */
+    'chat.title': { en: 'Chat with a dentist', th: 'แชทกับทันตแพทย์' },
+    'chat.sub': { en: 'Non-urgent questions only. For emergencies call <strong>1800 555 010</strong>.', th: 'สำหรับคำถามที่ไม่ฉุกเฉินเท่านั้น กรณีฉุกเฉินโทร <strong>1800 555 010</strong>' },
+    'chat.searchPh': { en: 'Search dentists', th: 'ค้นหาทันตแพทย์' },
+    'chat.inputPh': { en: 'Write a message…', th: 'พิมพ์ข้อความ…' },
+    'chat.send': { en: 'Send message', th: 'ส่งข้อความ' },
+    'chat.backAria': { en: 'Back to conversations', th: 'กลับไปที่รายการสนทนา' },
+    'chat.repliesSoon': { en: 'usually replies in a few minutes', th: 'มักตอบกลับภายในไม่กี่นาที' },
+    'chat.book': { en: 'Book', th: 'จอง' },
+    'chat.empty': { en: 'No messages yet. Say hello or pick a question below.', th: 'ยังไม่มีข้อความ ทักทายหรือเลือกคำถามด้านล่างได้เลย' },
+    'chat.noMatch': { en: 'No dentists match that search.', th: 'ไม่พบทันตแพทย์ที่ตรงกับคำค้นหา' },
+    'chat.you': { en: 'You: ', th: 'คุณ: ' },
+    'chat.replied': { en: '{name} replied to your message.', th: '{name} ตอบข้อความของคุณแล้ว' },
+
+    'qr.toothache': { en: 'I have a toothache — what should I do?', th: 'ฉันปวดฟัน ควรทำอย่างไร' },
+    'qr.whiteningCost': { en: 'How much does whitening cost?', th: 'ฟอกสีฟันราคาเท่าไร' },
+    'qr.bulkBill': { en: 'Do you bulk bill for children?', th: 'เด็กใช้สิทธิเบิกได้ไหม' },
+    'qr.move': { en: 'Can I move my appointment?', th: 'ขอเลื่อนนัดได้ไหม' },
+    'qr.flossBleed': { en: 'Is it normal to bleed when flossing?', th: 'ใช้ไหมขัดฟันแล้วเลือดออก ปกติไหม' },
+
+    /* --- dentist auto-replies ----------------------------------------- */
+    'reply.pain': {
+      en: 'Sorry to hear that, {first}. Rinse with warm salty water and take paracetamol or ibuprofen as directed. If the pain wakes you at night or you notice swelling, book an emergency slot today and I’ll see you.',
+      th: 'เสียใจที่ได้ยินเช่นนั้น คุณ {first} ลองบ้วนปากด้วยน้ำเกลืออุ่นและรับประทานพาราเซตามอลหรือไอบูโพรเฟนตามคำแนะนำ หากปวดจนตื่นกลางคืนหรือมีอาการบวม กรุณาจองคิวฉุกเฉินวันนี้ แล้วเราจะตรวจให้'
+    },
+    'reply.swelling': {
+      en: 'Swelling with a fever needs to be seen the same day. Please book an Emergency Dental Care slot, or call 1800 555 010 and reception will fit you in.',
+      th: 'อาการบวมพร้อมมีไข้ต้องได้รับการตรวจภายในวันเดียวกัน กรุณาจองคิวทันตกรรมฉุกเฉิน หรือโทร 1800 555 010 แล้วเจ้าหน้าที่จะจัดคิวให้'
+    },
+    'reply.price': {
+      en: 'Prices are on the Services page — a check-up and clean is $129, whitening $449, and implants from $3,900. We give you a written quote before any treatment, and HICAPS claims your health-fund rebate on the spot.',
+      th: 'ราคาอยู่ในหน้าบริการ — ตรวจและขูดหินปูน $129 ฟอกสีฟัน $449 และรากฟันเทียมเริ่มต้น $3,900 เราจะออกใบเสนอราคาก่อนเริ่มการรักษาทุกครั้ง และเบิกสิทธิกองทุนสุขภาพผ่าน HICAPS ได้ทันที'
+    },
+    'reply.insurance': {
+      en: 'We accept all major health funds through HICAPS, so you only pay the gap. Children may also be eligible for Medicare CDBS bulk billing — bring your Medicare card along.',
+      th: 'เรารับกองทุนสุขภาพหลักทุกแห่งผ่าน HICAPS คุณจึงจ่ายเฉพาะส่วนต่าง เด็กอาจมีสิทธิเบิก Medicare CDBS ได้ — กรุณานำบัตร Medicare มาด้วย'
+    },
+    'reply.children': {
+      en: 'Dr. Nikhil Patel looks after our younger patients and is great with first visits. Children’s Dentistry appointments run 30 minutes, and eligible families are bulk billed.',
+      th: 'ทพ. นิขิล ปาเทล ดูแลผู้ป่วยเด็กและเก่งเรื่องการมาพบครั้งแรก นัดทันตกรรมเด็กใช้เวลา 30 นาที และครอบครัวที่มีสิทธิสามารถเบิกได้'
+    },
+    'reply.whitening': {
+      en: 'In-chair whitening takes about 90 minutes and lifts most patients 4–6 shades. We check for decay first, since whitening gel on an untreated cavity can be uncomfortable.',
+      th: 'การฟอกสีฟันที่คลินิกใช้เวลาประมาณ 90 นาที และทำให้ฟันขาวขึ้น 4–6 ระดับสำหรับผู้ป่วยส่วนใหญ่ เราจะตรวจฟันผุก่อน เพราะเจลฟอกสีบนฟันผุที่ยังไม่รักษาอาจทำให้ระคายเคือง'
+    },
+    'reply.braces': {
+      en: 'Dr. Giulia Rossi runs our orthodontics. The first step is an assessment with a digital scan, and you’ll see a simulation of the result before committing to braces or clear aligners.',
+      th: 'ทพ. จูเลีย รอสซี ดูแลงานจัดฟันของเรา ขั้นแรกคือการประเมินพร้อมสแกนดิจิทัล และคุณจะได้เห็นภาพจำลองผลลัพธ์ก่อนตัดสินใจเลือกเหล็กจัดฟันหรือแบบใส'
+    },
+    'reply.gums': {
+      en: 'A little bleeding when you start flossing is common and usually settles within two weeks. If it keeps going, that points to gum inflammation and is worth a gum-health check.',
+      th: 'การมีเลือดออกเล็กน้อยเมื่อเริ่มใช้ไหมขัดฟันเป็นเรื่องปกติ และมักหายภายในสองสัปดาห์ หากยังมีเลือดออกต่อเนื่อง อาจเป็นสัญญาณของเหงือกอักเสบ ควรเข้ามาตรวจสุขภาพเหงือก'
+    },
+    'reply.reschedule': {
+      en: 'No problem — open My Appointments and use Reschedule or Cancel on the booking. Anything more than 24 hours out is free of charge.',
+      th: 'ไม่มีปัญหา — เปิดหน้านัดของฉัน แล้วกดเลื่อนนัดหรือยกเลิกที่รายการนั้น หากล่วงหน้ามากกว่า 24 ชั่วโมงจะไม่มีค่าใช้จ่าย'
+    },
+    'reply.booking': {
+      en: 'Happy to see you. Tap Book on this conversation and you’ll see my next open times, or tell me roughly when suits and I’ll suggest something.',
+      th: 'ยินดีที่จะได้พบคุณ กดปุ่มจองในหน้าสนทนานี้เพื่อดูเวลาว่างถัดไปของเรา หรือบอกช่วงเวลาที่สะดวกมาคร่าว ๆ แล้วเราจะเสนอเวลาให้'
+    },
+    'reply.wisdom': {
+      en: 'Wisdom teeth are Dr. Daniel Okafor’s area. We start with a 3D scan to check the roots and nerve position, then plan the extraction — sedation is available if you’d prefer.',
+      th: 'ฟันคุดเป็นงานของ ทพ. แดเนียล โอกาฟอร์ เราจะเริ่มด้วยการสแกน 3 มิติเพื่อดูรากฟันและตำแหน่งเส้นประสาท แล้วจึงวางแผนถอน — มีบริการยาระงับความรู้สึกหากคุณต้องการ'
+    },
+    'reply.implant': {
+      en: 'For a missing tooth we’d look at an implant, a bridge or a partial denture. A consult with a 3D scan tells us which suits your bone and gum health best.',
+      th: 'กรณีฟันหาย เราจะพิจารณารากฟันเทียม สะพานฟัน หรือฟันปลอมบางส่วน การเข้าปรึกษาพร้อมสแกน 3 มิติจะบอกได้ว่าวิธีใดเหมาะกับสภาพกระดูกและเหงือกของคุณที่สุด'
+    },
+    'reply.nervous': {
+      en: 'That’s more common than you’d think, and it’s nothing to be embarrassed about. Tell reception when you book and we’ll allow extra time, explain everything first, and stop whenever you raise a hand.',
+      th: 'เรื่องนี้พบบ่อยกว่าที่คิด และไม่ใช่เรื่องน่าอาย แจ้งเจ้าหน้าที่ตอนจองได้เลย เราจะเผื่อเวลาให้มากขึ้น อธิบายทุกขั้นตอนก่อนเริ่ม และหยุดทันทีเมื่อคุณยกมือ'
+    },
+    'reply.greeting': {
+      en: 'Hi {first}! {dentist} here. What can I help you with today?',
+      th: 'สวัสดีคุณ {first} {dentist} พูดอยู่ วันนี้ให้ช่วยเรื่องอะไรดี'
+    },
+    'reply.default': {
+      en: 'Thanks for the message, {first}. I’ll review it properly before your next visit. If it’s urgent or painful, book an emergency slot and we’ll take a look today.',
+      th: 'ขอบคุณสำหรับข้อความ คุณ {first} เราจะอ่านอย่างละเอียดก่อนการนัดครั้งถัดไปของคุณ หากเป็นเรื่องเร่งด่วนหรือมีอาการปวด กรุณาจองคิวฉุกเฉิน แล้วเราจะตรวจให้วันนี้'
+    },
+
+    /* --- register ----------------------------------------------------- */
+    'reg.title': { en: 'Register as a patient', th: 'ลงทะเบียนเป็นผู้ป่วย' },
+    'reg.sub': { en: 'Takes about a minute. Your details stay in this browser — this is a prototype.', th: 'ใช้เวลาประมาณหนึ่งนาที ข้อมูลของคุณถูกเก็บไว้ในเบราว์เซอร์นี้เท่านั้น — นี่คือต้นแบบ' },
+    'reg.personal': { en: 'Personal details', th: 'ข้อมูลส่วนตัว' },
+    'reg.first': { en: 'First name', th: 'ชื่อ' },
+    'reg.firstErr': { en: 'Please enter your first name.', th: 'กรุณากรอกชื่อ' },
+    'reg.last': { en: 'Last name', th: 'นามสกุล' },
+    'reg.lastErr': { en: 'Please enter your last name.', th: 'กรุณากรอกนามสกุล' },
+    'reg.dob': { en: 'Date of birth', th: 'วันเกิด' },
+    'reg.dobErr': { en: 'Please enter a valid date of birth.', th: 'กรุณากรอกวันเกิดที่ถูกต้อง' },
+    'reg.gender': { en: 'Gender', th: 'เพศ' },
+    'reg.genderNone': { en: 'Prefer not to say', th: 'ไม่ระบุ' },
+    'reg.genderFemale': { en: 'Female', th: 'หญิง' },
+    'reg.genderMale': { en: 'Male', th: 'ชาย' },
+    'reg.genderNonBinary': { en: 'Non-binary', th: 'นอนไบนารี' },
+    'reg.contact': { en: 'Contact', th: 'ข้อมูลติดต่อ' },
+    'reg.email': { en: 'Email address', th: 'อีเมล' },
+    'reg.emailErr': { en: 'Please enter a valid email address.', th: 'กรุณากรอกอีเมลที่ถูกต้อง' },
+    'reg.emailTaken': { en: 'That email is already registered. Try signing in instead.', th: 'อีเมลนี้ลงทะเบียนไว้แล้ว กรุณาเข้าสู่ระบบ' },
+    'reg.phone': { en: 'Mobile number', th: 'เบอร์มือถือ' },
+    'reg.phonePh': { en: '04xx xxx xxx', th: '08x xxx xxxx' },
+    'reg.phoneErr': { en: 'Please enter a contactable mobile number.', th: 'กรุณากรอกเบอร์มือถือที่ติดต่อได้' },
+    'reg.address': { en: 'Home address', th: 'ที่อยู่' },
+    'reg.medical': { en: 'Medical & insurance', th: 'ข้อมูลสุขภาพและประกัน' },
+    'reg.insurer': { en: 'Health fund', th: 'กองทุนสุขภาพ' },
+    'reg.insurerPh': { en: 'e.g. Medibank', th: 'เช่น Medibank' },
+    'reg.member': { en: 'Membership number', th: 'เลขที่สมาชิก' },
+    'reg.notes': { en: 'Allergies, medications or conditions we should know about', th: 'อาการแพ้ ยาที่ใช้ หรือโรคประจำตัวที่เราควรทราบ' },
+    'reg.notesPh': { en: 'e.g. Penicillin allergy, taking blood thinners', th: 'เช่น แพ้ยาเพนิซิลลิน ใช้ยาละลายลิ่มเลือด' },
+    'reg.security': { en: 'Account security', th: 'ความปลอดภัยของบัญชี' },
+    'reg.password': { en: 'Password', th: 'รหัสผ่าน' },
+    'reg.passwordHelp': { en: 'At least 8 characters.', th: 'อย่างน้อย 8 ตัวอักษร' },
+    'reg.passwordErr': { en: 'Use at least 8 characters.', th: 'กรุณาใช้อย่างน้อย 8 ตัวอักษร' },
+    'reg.password2': { en: 'Confirm password', th: 'ยืนยันรหัสผ่าน' },
+    'reg.password2Err': { en: 'Please confirm your password.', th: 'กรุณายืนยันรหัสผ่าน' },
+    'reg.password2Mismatch': { en: 'Passwords do not match.', th: 'รหัสผ่านไม่ตรงกัน' },
+    'reg.consent': { en: 'I consent to BrightSmile Dental storing my details for treatment purposes.', th: 'ข้าพเจ้ายินยอมให้คลินิกไบรท์สไมล์เก็บข้อมูลเพื่อวัตถุประสงค์ในการรักษา' },
+    'reg.consentErr': { en: 'We need your consent to create the record.', th: 'เราต้องได้รับความยินยอมจากคุณก่อนสร้างประวัติ' },
+    'reg.marketing': { en: 'Send me check-up reminders and clinic news.', th: 'ส่งการแจ้งเตือนตรวจสุขภาพฟันและข่าวสารของคลินิกให้ฉัน' },
+    'reg.already': { en: 'Already registered?', th: 'ลงทะเบียนแล้ว?' },
+    'reg.submit': { en: 'Create my patient record', th: 'สร้างประวัติผู้ป่วยของฉัน' },
+
+    /* --- login -------------------------------------------------------- */
+    'login.title': { en: 'Patient sign in', th: 'เข้าสู่ระบบผู้ป่วย' },
+    'login.sub': { en: 'Access your bookings, records and messages.', th: 'เข้าถึงการนัด ประวัติ และข้อความของคุณ' },
+    'login.emailErr': { en: 'Enter the email you registered with.', th: 'กรอกอีเมลที่คุณใช้ลงทะเบียน' },
+    'login.passwordErr': { en: 'Enter your password.', th: 'กรอกรหัสผ่านของคุณ' },
+    'login.submit': { en: 'Sign in', th: 'เข้าสู่ระบบ' },
+    'login.demoAccount': { en: 'Prototype demo account', th: 'บัญชีตัวอย่างสำหรับต้นแบบ' },
+    'login.useIt': { en: 'Use it', th: 'ใช้บัญชีนี้' },
+    'login.newPatient': { en: 'New patient?', th: 'ผู้ป่วยใหม่?' },
+    'login.registerHere': { en: 'Register here', th: 'ลงทะเบียนที่นี่' },
+    'login.wrongPassword': { en: 'That password does not match our records.', th: 'รหัสผ่านไม่ตรงกับข้อมูลของเรา' },
+    'login.noSuchPatient': { en: 'We could not find a patient with that email. Please register first.', th: 'ไม่พบผู้ป่วยที่ใช้อีเมลนี้ กรุณาลงทะเบียนก่อน' },
+    'login.gateAppointments': { en: 'Please sign in to see your appointments.', th: 'กรุณาเข้าสู่ระบบเพื่อดูนัดของคุณ' },
+    'login.gateChat': { en: 'Please sign in to message a dentist.', th: 'กรุณาเข้าสู่ระบบเพื่อส่งข้อความหาทันตแพทย์' },
+    'login.gateProfile': { en: 'Please sign in to view your profile.', th: 'กรุณาเข้าสู่ระบบเพื่อดูโปรไฟล์ของคุณ' },
+    'login.gateBooking': { en: 'Sign in or register to confirm your appointment — we’ve kept your selected time.', th: 'เข้าสู่ระบบหรือลงทะเบียนเพื่อยืนยันการนัด — เราเก็บเวลาที่คุณเลือกไว้แล้ว' },
+
+    /* --- profile ------------------------------------------------------ */
+    'profile.title': { en: 'My profile', th: 'โปรไฟล์ของฉัน' },
+    'profile.sub': { en: 'Keep your contact and medical details up to date.', th: 'ปรับข้อมูลติดต่อและข้อมูลสุขภาพให้เป็นปัจจุบัน' },
+    'profile.since': { en: 'Patient since {date}', th: 'เป็นผู้ป่วยตั้งแต่ {date}' },
+    'profile.pastVisits': { en: 'past visits', th: 'ครั้งที่เข้ารับบริการ' },
+    'profile.next': { en: 'Next: {date}', th: 'ครั้งถัดไป: {date}' },
+    'profile.noNext': { en: 'No upcoming visit', th: 'ไม่มีนัดที่กำลังจะถึง' },
+    'profile.contact': { en: 'Contact details', th: 'ข้อมูลติดต่อ' },
+    'profile.phone': { en: 'Mobile', th: 'เบอร์มือถือ' },
+    'profile.email': { en: 'Email', th: 'อีเมล' },
+    'profile.address': { en: 'Address', th: 'ที่อยู่' },
+    'profile.fundSection': { en: 'Health fund', th: 'กองทุนสุขภาพ' },
+    'profile.fund': { en: 'Fund', th: 'กองทุน' },
+    'profile.member': { en: 'Membership no.', th: 'เลขที่สมาชิก' },
+    'profile.notes': { en: 'Medical notes', th: 'บันทึกทางการแพทย์' },
+    'profile.save': { en: 'Save changes', th: 'บันทึกการเปลี่ยนแปลง' },
+
+    /* --- footer ------------------------------------------------------- */
+    'footer.hours': { en: 'Mon–Fri 09:00–17:00 · Sat 09:00–13:00 · Sun closed', th: 'จ.–ศ. 09:00–17:00 · ส. 09:00–13:00 · อา. ปิด' },
+    'footer.patients': { en: 'Patients', th: 'ผู้ป่วย' },
+    'footer.register': { en: 'Register', th: 'ลงทะเบียน' },
+    'footer.bookVisit': { en: 'Book a visit', th: 'จองนัด' },
+    'footer.myAppts': { en: 'My appointments', th: 'นัดของฉัน' },
+    'footer.clinic': { en: 'Clinic', th: 'คลินิก' },
+    'footer.services': { en: 'Services', th: 'บริการ' },
+    'footer.chat': { en: 'Chat with a dentist', th: 'แชทกับทันตแพทย์' },
+    'footer.notes': { en: 'Prototype notes', th: 'หมายเหตุต้นแบบ' },
+    'footer.notesBody': {
+      en: 'Clickable prototype for demo purposes. Data is stored in this browser only (localStorage); no server, no real patient records.',
+      th: 'ต้นแบบที่คลิกใช้งานได้เพื่อการสาธิต ข้อมูลถูกเก็บในเบราว์เซอร์นี้เท่านั้น (localStorage) ไม่มีเซิร์ฟเวอร์ และไม่ใช่ประวัติผู้ป่วยจริง'
+    },
+    'footer.reset': { en: 'Reset demo data', th: 'รีเซ็ตข้อมูลตัวอย่าง' },
+    'footer.protoBadge': { en: 'Prototype', th: 'ต้นแบบ' },
+    'footer.resetConfirm': {
+      en: 'Reset the prototype back to its demo data? Anything you registered or booked here will be cleared.',
+      th: 'รีเซ็ตต้นแบบกลับเป็นข้อมูลตัวอย่างหรือไม่ ข้อมูลที่คุณลงทะเบียนหรือจองไว้จะถูกลบทั้งหมด'
+    },
+
+    /* --- modals ------------------------------------------------------- */
+    'modal.close': { en: 'Close', th: 'ปิด' },
+    'modal.service': { en: 'Service', th: 'บริการ' },
+    'modal.bookThis': { en: 'Book this treatment', th: 'จองการรักษานี้' },
+    'modal.included': { en: 'What’s included', th: 'สิ่งที่รวมอยู่ในบริการ' },
+    'modal.whoProvides': { en: 'Dentists who provide this', th: 'ทันตแพทย์ที่ให้บริการนี้' },
+    'modal.priceNote': {
+      en: 'Prices are indicative and confirmed at your consultation. Health-fund rebates are claimed on the spot with HICAPS.',
+      th: 'ราคาเป็นเพียงการประมาณ และจะยืนยันเมื่อเข้าปรึกษา สิทธิกองทุนสุขภาพเบิกได้ทันทีผ่าน HICAPS'
+    },
+    'modal.dentist': { en: 'Dentist', th: 'ทันตแพทย์' },
+    'modal.message': { en: 'Message', th: 'ส่งข้อความ' },
+    'modal.bookWith': { en: 'Book with this dentist', th: 'จองกับทันตแพทย์ท่านนี้' },
+    'modal.yearsExp': { en: '{n} years experience', th: 'ประสบการณ์ {n} ปี' },
+    'modal.fromReviews': { en: 'from {n} reviews', th: 'จาก {n} รีวิว' },
+    'modal.specialties': { en: 'Specialties', th: 'ความเชี่ยวชาญ' },
+    'modal.languages': { en: 'Languages', th: 'ภาษา' },
+    'modal.works': { en: 'Works', th: 'วันออกตรวจ' },
+    'modal.nextAvailable': { en: 'Next available', th: 'ว่างครั้งถัดไป' },
+    'modal.profile': { en: 'Profile', th: 'โปรไฟล์' },
+
+    'resched.title': { en: 'Reschedule appointment', th: 'เลื่อนนัด' },
+    'resched.context': { en: '{service} with {dentist} — currently <strong>{date} at {time}</strong>.', th: '{service} กับ {dentist} — ปัจจุบัน <strong>{date} เวลา {time}</strong>' },
+    'resched.newDate': { en: 'New date', th: 'วันใหม่' },
+    'resched.newTime': { en: 'New time', th: 'เวลาใหม่' },
+    'resched.keep': { en: 'Keep current time', th: 'คงเวลาเดิม' },
+    'resched.save': { en: 'Confirm new time', th: 'ยืนยันเวลาใหม่' },
+
+    'cancelModal.title': { en: 'Cancel appointment?', th: 'ยกเลิกนัดหรือไม่' },
+    'cancelModal.context': { en: 'You are cancelling <strong>{service}</strong> with {dentist} on <strong>{date} at {time}</strong>.', th: 'คุณกำลังยกเลิก <strong>{service}</strong> กับ {dentist} วันที่ <strong>{date} เวลา {time}</strong>' },
+    'cancelModal.reason': { en: 'Reason', th: 'เหตุผล' },
+    'cancelModal.reasonNone': { en: 'Prefer not to say', th: 'ไม่ระบุ' },
+    'cancelModal.reasonConflict': { en: 'Schedule conflict', th: 'ตารางเวลาไม่ตรง' },
+    'cancelModal.reasonBetter': { en: 'Feeling better', th: 'อาการดีขึ้นแล้ว' },
+    'cancelModal.reasonCost': { en: 'Cost concerns', th: 'กังวลเรื่องค่าใช้จ่าย' },
+    'cancelModal.reasonOther': { en: 'Booked at another clinic', th: 'จองที่คลินิกอื่นแล้ว' },
+    'cancelModal.keep': { en: 'Keep appointment', th: 'เก็บนัดไว้' },
+    'cancelModal.confirm': { en: 'Yes, cancel it', th: 'ใช่ ยกเลิกเลย' },
+
+    /* --- toasts ------------------------------------------------------- */
+    'toast.pickService': { en: 'Please choose a treatment first.', th: 'กรุณาเลือกการรักษาก่อน' },
+    'toast.pickDentist': { en: 'Please choose a dentist first.', th: 'กรุณาเลือกทันตแพทย์ก่อน' },
+    'toast.pickSlot': { en: 'Please choose a date and a time.', th: 'กรุณาเลือกวันและเวลา' },
+    'toast.agreePolicy': { en: 'Please acknowledge the cancellation policy.', th: 'กรุณายอมรับนโยบายการยกเลิก' },
+    'toast.slotTaken': { en: 'Sorry, that slot was just taken. Please pick another time.', th: 'ขออภัย เวลานั้นถูกจองไปแล้ว กรุณาเลือกเวลาอื่น' },
+    'toast.booked': { en: 'Appointment confirmed — reference {ref}', th: 'ยืนยันการนัดแล้ว — รหัสอ้างอิง {ref}' },
+    'toast.moved': { en: 'Moved to {date} at {time}.', th: 'เลื่อนไปเป็น {date} เวลา {time} แล้ว' },
+    'toast.cancelled': { en: 'Appointment cancelled.', th: 'ยกเลิกนัดแล้ว' },
+    'toast.fixFields': { en: 'Please fix the highlighted fields.', th: 'กรุณาแก้ไขช่องที่ทำเครื่องหมายไว้' },
+    'toast.welcome': { en: 'Welcome to BrightSmile, {first}!', th: 'ยินดีต้อนรับสู่ไบรท์สไมล์ คุณ {first}' },
+    'toast.signedIn': { en: 'Signed in as {name}.', th: 'เข้าสู่ระบบในชื่อ {name} แล้ว' },
+    'toast.signedOut': { en: 'You have been signed out.', th: 'ออกจากระบบแล้ว' },
+    'toast.profileSaved': { en: 'Profile updated.', th: 'อัปเดตโปรไฟล์แล้ว' },
+    'toast.demoReset': { en: 'Demo data reset.', th: 'รีเซ็ตข้อมูลตัวอย่างแล้ว' },
+    'toast.langSwitched': { en: 'Switched to English.', th: 'เปลี่ยนเป็นภาษาไทยแล้ว' },
+
+    /* --- relative time ------------------------------------------------ */
+    'time.now': { en: 'just now', th: 'เมื่อสักครู่' },
+    'time.mins': { en: '{n}m ago', th: '{n} นาทีที่แล้ว' },
+    'time.hours': { en: '{n}h ago', th: '{n} ชั่วโมงที่แล้ว' },
+    'time.days': { en: '{n}d ago', th: '{n} วันที่แล้ว' },
+
+    /* --- seeded demo content ------------------------------------------
+     * Held as keys, not literals, so the demo patient's history follows the
+     * language too. Anything a user actually types stays exactly as typed.
+     * ---------------------------------------------------------------- */
+    'seed.address': { en: '8 Rosewood Ave, Southbank', th: '8 โรสวูดอเวนิว เซาท์แบงก์' },
+    'seed.notes': { en: 'Penicillin allergy.', th: 'แพ้ยาเพนิซิลลิน' },
+    'seed.reasonCheckup': { en: 'Six-month check-up', th: 'ตรวจสุขภาพฟันประจำหกเดือน' },
+    'seed.reasonGums': { en: 'Bleeding gums on the lower right', th: 'เหงือกล่างขวามีเลือดออก' },
+    'seed.chat1': {
+      en: 'Hi Jordan — I saw your check-up is booked for next week. Anything bothering you in the meantime?',
+      th: 'สวัสดีคุณจอร์แดน — เห็นว่าคุณนัดตรวจไว้สัปดาห์หน้า ระหว่างนี้มีอาการอะไรกวนใจไหม'
+    },
+    'seed.chat2': {
+      en: 'All good, thanks! Just a bit of sensitivity to cold on the upper left.',
+      th: 'ปกติดี ขอบคุณ มีแค่เสียวฟันเวลาโดนของเย็นที่ด้านซ้ายบนเล็กน้อย'
+    },
+    'seed.chat3': {
+      en: 'Noted — I’ll take a closer look at that tooth. Try a sensitive-teeth toothpaste until then and avoid very cold drinks.',
+      th: 'รับทราบ — เราจะดูฟันซี่นั้นให้ละเอียด ระหว่างนี้ลองใช้ยาสีฟันสำหรับฟันเสียว และเลี่ยงเครื่องดื่มเย็นจัด'
+    }
+  };
+
+  /* =====================================================================
    * Reference data
+   *
+   * Patient-visible copy is {en, th}; ids, categories and specialties stay
+   * English because they are keys the code matches on, and are translated
+   * for display through cat.* / spoken.* entries above.
    * ===================================================================*/
   const SERVICES = [
-    { id: 'svc-checkup', name: 'Check-up & Clean', category: 'Preventive', icon: 'shield-check',
-      price: 129, duration: 45, popular: true,
-      blurb: 'A full oral exam, scale and polish, plus fluoride treatment.',
-      detail: 'Your dentist checks every tooth and your gums, removes plaque and tartar build-up, polishes the enamel and finishes with a fluoride treatment. Recommended every six months.',
-      includes: ['Full oral examination', 'Scale, clean and polish', 'Fluoride treatment', 'Personalised home-care plan'] },
-    { id: 'svc-xray', name: 'Digital X-Ray & Diagnostics', category: 'Preventive', icon: 'file-medical',
-      price: 89, duration: 20,
-      blurb: 'Low-radiation digital imaging to spot problems early.',
-      detail: 'Digital radiographs reveal decay between teeth, bone loss and issues below the gum line that a visual exam cannot see. Images are available to you in the portal straight after the visit.',
-      includes: ['Up to 4 digital radiographs', 'Same-day report', 'Images shared to your portal'] },
-    { id: 'svc-whitening', name: 'Teeth Whitening', category: 'Cosmetic', icon: 'brightness-high',
-      price: 449, duration: 90, popular: true,
-      blurb: 'In-chair whitening — several shades brighter in one visit.',
-      detail: 'A protective barrier is applied to your gums before a professional-strength whitening gel is activated in three short cycles. Most patients lift 4–6 shades in a single appointment.',
-      includes: ['Shade assessment', 'Three whitening cycles', 'Take-home maintenance kit', 'Sensitivity aftercare gel'] },
-    { id: 'svc-veneers', name: 'Porcelain Veneers', category: 'Cosmetic', icon: 'gem',
-      price: 1100, duration: 120,
-      blurb: 'Custom-made porcelain facings for chipped or stained teeth.',
-      detail: 'Wafer-thin porcelain shells are bonded to the front of your teeth to correct shape, colour and small gaps. Includes digital smile preview before any preparation begins.',
-      includes: ['Digital smile design preview', 'Custom porcelain shells', 'Trial fit and bonding', 'Two-week review'] },
-    { id: 'svc-implant', name: 'Dental Implant', category: 'Surgical', icon: 'nut',
-      price: 3900, duration: 120,
-      blurb: 'A permanent titanium replacement for a missing tooth.',
-      detail: 'A titanium post is placed into the jaw, allowed to integrate over several months, then finished with a custom crown. Includes 3D planning scan and all surgical review visits.',
-      includes: ['3D cone-beam planning scan', 'Implant placement surgery', 'Custom crown', 'All review appointments'] },
-    { id: 'svc-rootcanal', name: 'Root Canal Therapy', category: 'Surgical', icon: 'bandaid',
-      price: 1250, duration: 90,
-      blurb: 'Saves an infected tooth and stops the pain.',
-      detail: 'The infected pulp is removed, the canal is disinfected and sealed, and the tooth is restored. Usually completed across two visits under local anaesthetic.',
-      includes: ['Local anaesthetic', 'Canal cleaning and sealing', 'Temporary and final restoration', 'Follow-up radiograph'] },
-    { id: 'svc-braces', name: 'Braces & Clear Aligners', category: 'Orthodontics', icon: 'align-middle',
-      price: 5600, duration: 60, popular: true,
-      blurb: 'Straighten your teeth with metal braces or clear aligners.',
-      detail: 'Starts with a full orthodontic assessment, digital scan and treatment simulation. You then choose between fixed braces or removable clear aligners, with monthly adjustment visits included.',
-      includes: ['Orthodontic assessment', 'Digital scan and simulation', 'All adjustment visits', 'Retainers on completion'] },
-    { id: 'svc-kids', name: 'Children’s Dentistry', category: 'Family', icon: 'emoji-smile',
-      price: 95, duration: 30, popular: true,
-      blurb: 'Gentle, friendly care for patients under 16.',
-      detail: 'A calm, unhurried visit designed for kids — a tour of the chair, a gentle exam and clean, fissure sealants where needed, and a sticker on the way out. Bulk-billed for eligible families.',
-      includes: ['Child-friendly exam and clean', 'Fissure sealants if needed', 'Brushing coaching for parents', 'Medicare CDBS bulk billing'] },
-    { id: 'svc-emergency', name: 'Emergency Dental Care', category: 'Urgent', icon: 'exclamation-triangle',
-      price: 199, duration: 30,
-      blurb: 'Same-day relief for pain, swelling or a broken tooth.',
-      detail: 'We keep slots open every day for urgent problems: severe toothache, a knocked-out or broken tooth, swelling, or a lost filling. Priority is triaged by phone when you book.',
-      includes: ['Same-day triage', 'Pain relief', 'Temporary repair', 'Plan for definitive treatment'] },
-    { id: 'svc-gum', name: 'Gum Disease Treatment', category: 'Preventive', icon: 'droplet-half',
-      price: 320, duration: 60,
-      blurb: 'Deep cleaning to treat bleeding or receding gums.',
-      detail: 'Periodontal charting followed by deep scaling and root planing below the gum line, plus a maintenance schedule to keep the condition stable.',
-      includes: ['Periodontal charting', 'Deep scaling and root planing', 'Antibacterial rinse plan', 'Three-month review'] },
-    { id: 'svc-wisdom', name: 'Wisdom Tooth Removal', category: 'Surgical', icon: 'scissors',
-      price: 890, duration: 75,
-      blurb: 'Surgical extraction with sedation options available.',
-      detail: 'Assessment with a 3D scan, then extraction under local anaesthetic with optional sedation. Includes aftercare pack and a review visit one week later.',
-      includes: ['3D assessment scan', 'Extraction under anaesthetic', 'Aftercare pack', 'One-week review'] },
-    { id: 'svc-crown', name: 'Crowns & Bridges', category: 'Restorative', icon: 'hexagon-half',
-      price: 1750, duration: 90,
-      blurb: 'Rebuild a heavily damaged tooth, or bridge a gap.',
-      detail: 'A digital scan is used to mill a ceramic crown that matches your natural shade, restoring strength to a cracked or heavily filled tooth.',
-      includes: ['Digital impression', 'Shade matching', 'Ceramic crown or bridge', 'Bite adjustment visit'] }
+    { id: 'svc-checkup', category: 'Preventive', icon: 'shield-check', price: 129, duration: 45, popular: true,
+      name: { en: 'Check-up & Clean', th: 'ตรวจฟันและขูดหินปูน' },
+      blurb: { en: 'A full oral exam, scale and polish, plus fluoride treatment.', th: 'ตรวจช่องปากเต็มรูปแบบ ขูดหินปูน ขัดฟัน พร้อมเคลือบฟลูออไรด์' },
+      detail: {
+        en: 'Your dentist checks every tooth and your gums, removes plaque and tartar build-up, polishes the enamel and finishes with a fluoride treatment. Recommended every six months.',
+        th: 'ทันตแพทย์จะตรวจฟันทุกซี่และเหงือกของคุณ กำจัดคราบพลัคและหินปูน ขัดผิวเคลือบฟัน และปิดท้ายด้วยการเคลือบฟลูออไรด์ แนะนำให้ทำทุกหกเดือน'
+      },
+      includes: {
+        en: ['Full oral examination', 'Scale, clean and polish', 'Fluoride treatment', 'Personalised home-care plan'],
+        th: ['ตรวจช่องปากเต็มรูปแบบ', 'ขูดหินปูน ทำความสะอาด และขัดฟัน', 'เคลือบฟลูออไรด์', 'แผนดูแลฟันที่บ้านเฉพาะบุคคล']
+      } },
+    { id: 'svc-xray', category: 'Preventive', icon: 'file-medical', price: 89, duration: 20,
+      name: { en: 'Digital X-Ray & Diagnostics', th: 'เอกซเรย์ดิจิทัลและวินิจฉัย' },
+      blurb: { en: 'Low-radiation digital imaging to spot problems early.', th: 'ภาพถ่ายดิจิทัลรังสีต่ำ เพื่อพบปัญหาได้เร็ว' },
+      detail: {
+        en: 'Digital radiographs reveal decay between teeth, bone loss and issues below the gum line that a visual exam cannot see. Images are available to you in the portal straight after the visit.',
+        th: 'ภาพรังสีดิจิทัลเผยให้เห็นฟันผุระหว่างซี่ การละลายของกระดูก และปัญหาใต้ขอบเหงือกที่การตรวจด้วยตาไม่เห็น คุณดูภาพได้ในระบบทันทีหลังเข้ารับบริการ'
+      },
+      includes: {
+        en: ['Up to 4 digital radiographs', 'Same-day report', 'Images shared to your portal'],
+        th: ['ภาพรังสีดิจิทัลไม่เกิน 4 ภาพ', 'รายงานผลภายในวันเดียว', 'แชร์ภาพเข้าระบบของคุณ']
+      } },
+    { id: 'svc-whitening', category: 'Cosmetic', icon: 'brightness-high', price: 449, duration: 90, popular: true,
+      name: { en: 'Teeth Whitening', th: 'ฟอกสีฟัน' },
+      blurb: { en: 'In-chair whitening — several shades brighter in one visit.', th: 'ฟอกสีฟันที่คลินิก — ขาวขึ้นหลายระดับในครั้งเดียว' },
+      detail: {
+        en: 'A protective barrier is applied to your gums before a professional-strength whitening gel is activated in three short cycles. Most patients lift 4–6 shades in a single appointment.',
+        th: 'เราจะปิดป้องเหงือกก่อนใช้เจลฟอกสีฟันความเข้มข้นระดับคลินิก แล้วกระตุ้นสามรอบสั้น ๆ ผู้ป่วยส่วนใหญ่ฟันขาวขึ้น 4–6 ระดับในการนัดครั้งเดียว'
+      },
+      includes: {
+        en: ['Shade assessment', 'Three whitening cycles', 'Take-home maintenance kit', 'Sensitivity aftercare gel'],
+        th: ['ประเมินระดับสีฟัน', 'ฟอกสีฟันสามรอบ', 'ชุดดูแลต่อเนื่องกลับบ้าน', 'เจลลดอาการเสียวฟันหลังทำ']
+      } },
+    { id: 'svc-veneers', category: 'Cosmetic', icon: 'gem', price: 1100, duration: 120,
+      name: { en: 'Porcelain Veneers', th: 'วีเนียร์เซรามิก' },
+      blurb: { en: 'Custom-made porcelain facings for chipped or stained teeth.', th: 'แผ่นเซรามิกทำเฉพาะบุคคล สำหรับฟันบิ่นหรือมีคราบ' },
+      detail: {
+        en: 'Wafer-thin porcelain shells are bonded to the front of your teeth to correct shape, colour and small gaps. Includes digital smile preview before any preparation begins.',
+        th: 'แผ่นเซรามิกบางเฉียบถูกยึดติดด้านหน้าฟันเพื่อแก้รูปทรง สี และช่องว่างเล็ก ๆ รวมการดูภาพจำลองรอยยิ้มแบบดิจิทัลก่อนเริ่มกรอแต่งฟัน'
+      },
+      includes: {
+        en: ['Digital smile design preview', 'Custom porcelain shells', 'Trial fit and bonding', 'Two-week review'],
+        th: ['ดูภาพออกแบบรอยยิ้มดิจิทัล', 'แผ่นเซรามิกทำเฉพาะบุคคล', 'ลองใส่และยึดติด', 'นัดตรวจติดตามสองสัปดาห์']
+      } },
+    { id: 'svc-implant', category: 'Surgical', icon: 'nut', price: 3900, duration: 120,
+      name: { en: 'Dental Implant', th: 'รากฟันเทียม' },
+      blurb: { en: 'A permanent titanium replacement for a missing tooth.', th: 'ทดแทนฟันที่หายไปอย่างถาวรด้วยไทเทเนียม' },
+      detail: {
+        en: 'A titanium post is placed into the jaw, allowed to integrate over several months, then finished with a custom crown. Includes 3D planning scan and all surgical review visits.',
+        th: 'ฝังแกนไทเทเนียมลงในกระดูกขากรรไกร รอให้ยึดติดกับกระดูกหลายเดือน แล้วปิดท้ายด้วยครอบฟันที่ทำเฉพาะบุคคล รวมการสแกน 3 มิติเพื่อวางแผน และการนัดตรวจติดตามหลังผ่าตัดทั้งหมด'
+      },
+      includes: {
+        en: ['3D cone-beam planning scan', 'Implant placement surgery', 'Custom crown', 'All review appointments'],
+        th: ['สแกน 3 มิติแบบโคนบีมเพื่อวางแผน', 'ผ่าตัดฝังรากฟันเทียม', 'ครอบฟันเฉพาะบุคคล', 'นัดตรวจติดตามทั้งหมด']
+      } },
+    { id: 'svc-rootcanal', category: 'Surgical', icon: 'bandaid', price: 1250, duration: 90,
+      name: { en: 'Root Canal Therapy', th: 'รักษารากฟัน' },
+      blurb: { en: 'Saves an infected tooth and stops the pain.', th: 'รักษาฟันที่ติดเชื้อไว้ และหยุดอาการปวด' },
+      detail: {
+        en: 'The infected pulp is removed, the canal is disinfected and sealed, and the tooth is restored. Usually completed across two visits under local anaesthetic.',
+        th: 'กำจัดเนื้อเยื่อในฟันที่ติดเชื้อ ฆ่าเชื้อและอุดคลองรากฟัน แล้วบูรณะตัวฟัน โดยทั่วไปทำเสร็จภายในสองครั้งภายใต้ยาชาเฉพาะที่'
+      },
+      includes: {
+        en: ['Local anaesthetic', 'Canal cleaning and sealing', 'Temporary and final restoration', 'Follow-up radiograph'],
+        th: ['ยาชาเฉพาะที่', 'ทำความสะอาดและอุดคลองรากฟัน', 'วัสดุอุดชั่วคราวและถาวร', 'เอกซเรย์ติดตามผล']
+      } },
+    { id: 'svc-braces', category: 'Orthodontics', icon: 'align-middle', price: 5600, duration: 60, popular: true,
+      name: { en: 'Braces & Clear Aligners', th: 'จัดฟันและอไลเนอร์ใส' },
+      blurb: { en: 'Straighten your teeth with metal braces or clear aligners.', th: 'จัดฟันให้เรียงสวยด้วยเหล็กจัดฟันหรืออไลเนอร์ใส' },
+      detail: {
+        en: 'Starts with a full orthodontic assessment, digital scan and treatment simulation. You then choose between fixed braces or removable clear aligners, with monthly adjustment visits included.',
+        th: 'เริ่มจากการประเมินการจัดฟันอย่างละเอียด สแกนดิจิทัล และจำลองผลการรักษา จากนั้นคุณเลือกได้ระหว่างเหล็กจัดฟันติดแน่นหรืออไลเนอร์ใสแบบถอดได้ รวมการนัดปรับเครื่องมือรายเดือน'
+      },
+      includes: {
+        en: ['Orthodontic assessment', 'Digital scan and simulation', 'All adjustment visits', 'Retainers on completion'],
+        th: ['ประเมินการจัดฟัน', 'สแกนดิจิทัลและจำลองผล', 'นัดปรับเครื่องมือทั้งหมด', 'รีเทนเนอร์เมื่อเสร็จสิ้น']
+      } },
+    { id: 'svc-kids', category: 'Family', icon: 'emoji-smile', price: 95, duration: 30, popular: true,
+      name: { en: 'Children’s Dentistry', th: 'ทันตกรรมเด็ก' },
+      blurb: { en: 'Gentle, friendly care for patients under 16.', th: 'ดูแลอย่างนุ่มนวลและเป็นมิตรสำหรับผู้ป่วยอายุต่ำกว่า 16 ปี' },
+      detail: {
+        en: 'A calm, unhurried visit designed for kids — a tour of the chair, a gentle exam and clean, fissure sealants where needed, and a sticker on the way out. Bulk-billed for eligible families.',
+        th: 'การเข้าพบที่ผ่อนคลายไม่เร่งรีบ ออกแบบมาสำหรับเด็ก — พาชมเก้าอี้ทำฟัน ตรวจและทำความสะอาดอย่างนุ่มนวล เคลือบหลุมร่องฟันเมื่อจำเป็น และมีสติกเกอร์ให้ตอนกลับ ครอบครัวที่มีสิทธิเบิกได้'
+      },
+      includes: {
+        en: ['Child-friendly exam and clean', 'Fissure sealants if needed', 'Brushing coaching for parents', 'Medicare CDBS bulk billing'],
+        th: ['ตรวจและทำความสะอาดแบบเป็นมิตรกับเด็ก', 'เคลือบหลุมร่องฟันหากจำเป็น', 'สอนผู้ปกครองแปรงฟันให้ลูก', 'เบิกสิทธิ Medicare CDBS']
+      } },
+    { id: 'svc-emergency', category: 'Urgent', icon: 'exclamation-triangle', price: 199, duration: 30,
+      name: { en: 'Emergency Dental Care', th: 'ทันตกรรมฉุกเฉิน' },
+      blurb: { en: 'Same-day relief for pain, swelling or a broken tooth.', th: 'บรรเทาอาการปวด บวม หรือฟันแตกได้ภายในวันเดียว' },
+      detail: {
+        en: 'We keep slots open every day for urgent problems: severe toothache, a knocked-out or broken tooth, swelling, or a lost filling. Priority is triaged by phone when you book.',
+        th: 'เรากันคิวไว้ทุกวันสำหรับปัญหาเร่งด่วน เช่น ปวดฟันรุนแรง ฟันหลุดหรือแตก อาการบวม หรือวัสดุอุดหลุด เราจะคัดกรองความเร่งด่วนทางโทรศัพท์เมื่อคุณจอง'
+      },
+      includes: {
+        en: ['Same-day triage', 'Pain relief', 'Temporary repair', 'Plan for definitive treatment'],
+        th: ['คัดกรองอาการภายในวันเดียว', 'บรรเทาอาการปวด', 'ซ่อมแซมชั่วคราว', 'วางแผนการรักษาถาวร']
+      } },
+    { id: 'svc-gum', category: 'Preventive', icon: 'droplet-half', price: 320, duration: 60,
+      name: { en: 'Gum Disease Treatment', th: 'รักษาโรคเหงือก' },
+      blurb: { en: 'Deep cleaning to treat bleeding or receding gums.', th: 'ทำความสะอาดระดับลึกเพื่อรักษาเหงือกที่มีเลือดออกหรือร่น' },
+      detail: {
+        en: 'Periodontal charting followed by deep scaling and root planing below the gum line, plus a maintenance schedule to keep the condition stable.',
+        th: 'บันทึกค่าปริทันต์ ตามด้วยการขูดหินปูนระดับลึกและเกลารากฟันใต้ขอบเหงือก พร้อมตารางดูแลต่อเนื่องเพื่อคุมอาการให้คงที่'
+      },
+      includes: {
+        en: ['Periodontal charting', 'Deep scaling and root planing', 'Antibacterial rinse plan', 'Three-month review'],
+        th: ['บันทึกค่าปริทันต์', 'ขูดหินปูนระดับลึกและเกลารากฟัน', 'แผนใช้น้ำยาบ้วนปากฆ่าเชื้อ', 'นัดตรวจติดตามสามเดือน']
+      } },
+    { id: 'svc-wisdom', category: 'Surgical', icon: 'scissors', price: 890, duration: 75,
+      name: { en: 'Wisdom Tooth Removal', th: 'ถอนฟันคุด' },
+      blurb: { en: 'Surgical extraction with sedation options available.', th: 'ผ่าตัดถอนฟัน มีตัวเลือกยาระงับความรู้สึก' },
+      detail: {
+        en: 'Assessment with a 3D scan, then extraction under local anaesthetic with optional sedation. Includes aftercare pack and a review visit one week later.',
+        th: 'ประเมินด้วยการสแกน 3 มิติ แล้วถอนฟันภายใต้ยาชาเฉพาะที่ โดยเลือกใช้ยาระงับความรู้สึกเพิ่มได้ รวมชุดดูแลหลังถอนและนัดตรวจติดตามในอีกหนึ่งสัปดาห์'
+      },
+      includes: {
+        en: ['3D assessment scan', 'Extraction under anaesthetic', 'Aftercare pack', 'One-week review'],
+        th: ['สแกน 3 มิติเพื่อประเมิน', 'ถอนฟันภายใต้ยาชา', 'ชุดดูแลหลังถอนฟัน', 'นัดตรวจติดตามหนึ่งสัปดาห์']
+      } },
+    { id: 'svc-crown', category: 'Restorative', icon: 'hexagon-half', price: 1750, duration: 90,
+      name: { en: 'Crowns & Bridges', th: 'ครอบฟันและสะพานฟัน' },
+      blurb: { en: 'Rebuild a heavily damaged tooth, or bridge a gap.', th: 'บูรณะฟันที่เสียหายมาก หรือทำสะพานฟันปิดช่องว่าง' },
+      detail: {
+        en: 'A digital scan is used to mill a ceramic crown that matches your natural shade, restoring strength to a cracked or heavily filled tooth.',
+        th: 'ใช้การสแกนดิจิทัลเพื่อกรอครอบฟันเซรามิกให้เข้ากับสีฟันธรรมชาติของคุณ คืนความแข็งแรงให้ฟันที่แตกร้าวหรือมีวัสดุอุดขนาดใหญ่'
+      },
+      includes: {
+        en: ['Digital impression', 'Shade matching', 'Ceramic crown or bridge', 'Bite adjustment visit'],
+        th: ['พิมพ์ปากแบบดิจิทัล', 'เทียบสีฟัน', 'ครอบฟันหรือสะพานฟันเซรามิก', 'นัดปรับการสบฟัน']
+      } }
   ];
 
+  /* Thai dental titles are gendered (ทพ./ทพญ.), and these dentists' genders
+     are not part of the prototype, so the neutral ทพ. is used throughout. */
   const DENTISTS = [
-    { id: 'dr-chen', name: 'Dr. Amelia Chen', title: 'Principal Dentist', color: '#0d7d76', rating: 4.9, reviews: 412,
-      specialties: ['Preventive', 'Cosmetic', 'Restorative'], languages: ['English', 'Mandarin'], experience: 15,
-      bio: 'Amelia founded BrightSmile in 2014 and focuses on preventive and cosmetic dentistry. They are known for a calm, thorough approach with nervous patients.',
-      days: [1, 2, 3, 4, 5] },
-    { id: 'dr-okafor', name: 'Dr. Daniel Okafor', title: 'Oral Surgeon', color: '#1c6dd0', rating: 4.8, reviews: 287,
-      specialties: ['Surgical', 'Restorative'], languages: ['English', 'French'], experience: 12,
-      bio: 'Daniel handles implants, wisdom teeth and complex extractions. They completed a surgical fellowship in Melbourne and lecture on sedation technique.',
-      days: [1, 3, 4, 5] },
-    { id: 'dr-rossi', name: 'Dr. Giulia Rossi', title: 'Orthodontist', color: '#8e44ad', rating: 4.9, reviews: 356,
-      specialties: ['Orthodontics', 'Cosmetic'], languages: ['English', 'Italian'], experience: 11,
-      bio: 'Giulia designs braces and clear-aligner treatment for teens and adults, with a focus on shorter treatment times through digital planning.',
-      days: [2, 3, 4, 6] },
-    { id: 'dr-patel', name: 'Dr. Nikhil Patel', title: 'Paediatric Dentist', color: '#e67e22', rating: 5.0, reviews: 198,
-      specialties: ['Family', 'Preventive'], languages: ['English', 'Hindi', 'Gujarati'], experience: 9,
-      bio: 'Nikhil sees children from their first tooth onwards and is a favourite with families for turning a check-up into an adventure.',
-      days: [1, 2, 4, 6] },
-    { id: 'dr-nguyen', name: 'Dr. Mai Nguyen', title: 'Periodontist', color: '#16a085', rating: 4.7, reviews: 231,
-      specialties: ['Preventive', 'Surgical'], languages: ['English', 'Vietnamese'], experience: 13,
-      bio: 'Mai treats gum disease and manages the clinic’s periodontal maintenance program, including gum grafting and deep cleaning.',
-      days: [1, 2, 3, 5] },
-    { id: 'dr-brooks', name: 'Dr. Sam Brooks', title: 'Emergency & General Dentist', color: '#c0392b', rating: 4.8, reviews: 174,
-      specialties: ['Urgent', 'Restorative', 'Preventive'], languages: ['English'], experience: 8,
-      bio: 'Sam covers the clinic’s emergency roster and same-day pain relief, plus general restorative work such as fillings and crowns.',
-      days: [1, 2, 3, 4, 5, 6] }
+    { id: 'dr-chen', color: '#0d7d76', rating: 4.9, reviews: 412, experience: 15,
+      specialties: ['Preventive', 'Cosmetic', 'Restorative'], languages: ['English', 'Mandarin'], days: [1, 2, 3, 4, 5],
+      name: { en: 'Dr. Amelia Chen', th: 'ทพ. อมีเลีย เชน' },
+      short: { en: 'Dr. Chen', th: 'หมออมีเลีย' },
+      title: { en: 'Principal Dentist', th: 'ทันตแพทย์ผู้อำนวยการ' },
+      bio: {
+        en: 'Amelia founded BrightSmile in 2014 and focuses on preventive and cosmetic dentistry. They are known for a calm, thorough approach with nervous patients.',
+        th: 'อมีเลียก่อตั้งไบรท์สไมล์ในปี 2014 และเชี่ยวชาญด้านทันตกรรมป้องกันและความงาม เป็นที่รู้จักในเรื่องความละเอียดและการดูแลผู้ป่วยที่กังวลอย่างใจเย็น'
+      } },
+    { id: 'dr-okafor', color: '#1c6dd0', rating: 4.8, reviews: 287, experience: 12,
+      specialties: ['Surgical', 'Restorative'], languages: ['English', 'French'], days: [1, 3, 4, 5],
+      name: { en: 'Dr. Daniel Okafor', th: 'ทพ. แดเนียล โอกาฟอร์' },
+      short: { en: 'Dr. Okafor', th: 'หมอแดเนียล' },
+      title: { en: 'Oral Surgeon', th: 'ศัลยแพทย์ช่องปาก' },
+      bio: {
+        en: 'Daniel handles implants, wisdom teeth and complex extractions. They completed a surgical fellowship in Melbourne and lecture on sedation technique.',
+        th: 'แดเนียลดูแลงานรากฟันเทียม ฟันคุด และการถอนฟันที่ซับซ้อน จบการฝึกอบรมด้านศัลยกรรมที่เมลเบิร์น และเป็นวิทยากรด้านเทคนิคการระงับความรู้สึก'
+      } },
+    { id: 'dr-rossi', color: '#8e44ad', rating: 4.9, reviews: 356, experience: 11,
+      specialties: ['Orthodontics', 'Cosmetic'], languages: ['English', 'Italian'], days: [2, 3, 4, 6],
+      name: { en: 'Dr. Giulia Rossi', th: 'ทพ. จูเลีย รอสซี' },
+      short: { en: 'Dr. Rossi', th: 'หมอจูเลีย' },
+      title: { en: 'Orthodontist', th: 'ทันตแพทย์จัดฟัน' },
+      bio: {
+        en: 'Giulia designs braces and clear-aligner treatment for teens and adults, with a focus on shorter treatment times through digital planning.',
+        th: 'จูเลียออกแบบการจัดฟันและอไลเนอร์ใสสำหรับวัยรุ่นและผู้ใหญ่ โดยเน้นลดระยะเวลารักษาด้วยการวางแผนแบบดิจิทัล'
+      } },
+    { id: 'dr-patel', color: '#e67e22', rating: 5.0, reviews: 198, experience: 9,
+      specialties: ['Family', 'Preventive'], languages: ['English', 'Hindi', 'Gujarati'], days: [1, 2, 4, 6],
+      name: { en: 'Dr. Nikhil Patel', th: 'ทพ. นิขิล ปาเทล' },
+      short: { en: 'Dr. Patel', th: 'หมอนิขิล' },
+      title: { en: 'Paediatric Dentist', th: 'ทันตแพทย์เด็ก' },
+      bio: {
+        en: 'Nikhil sees children from their first tooth onwards and is a favourite with families for turning a check-up into an adventure.',
+        th: 'นิขิลดูแลเด็กตั้งแต่ฟันซี่แรก และเป็นที่ชื่นชอบของครอบครัวเพราะเปลี่ยนการตรวจฟันให้เป็นการผจญภัย'
+      } },
+    { id: 'dr-nguyen', color: '#16a085', rating: 4.7, reviews: 231, experience: 13,
+      specialties: ['Preventive', 'Surgical'], languages: ['English', 'Vietnamese'], days: [1, 2, 3, 5],
+      name: { en: 'Dr. Mai Nguyen', th: 'ทพ. ม่าย เหงียน' },
+      short: { en: 'Dr. Nguyen', th: 'หมอม่าย' },
+      title: { en: 'Periodontist', th: 'ทันตแพทย์ปริทันต์' },
+      bio: {
+        en: 'Mai treats gum disease and manages the clinic’s periodontal maintenance program, including gum grafting and deep cleaning.',
+        th: 'ม่ายรักษาโรคเหงือกและดูแลโครงการติดตามสุขภาพปริทันต์ของคลินิก รวมถึงการปลูกเหงือกและการทำความสะอาดระดับลึก'
+      } },
+    { id: 'dr-brooks', color: '#c0392b', rating: 4.8, reviews: 174, experience: 8,
+      specialties: ['Urgent', 'Restorative', 'Preventive'], languages: ['English'], days: [1, 2, 3, 4, 5, 6],
+      name: { en: 'Dr. Sam Brooks', th: 'ทพ. แซม บรูกส์' },
+      short: { en: 'Dr. Brooks', th: 'หมอแซม' },
+      title: { en: 'Emergency & General Dentist', th: 'ทันตแพทย์ฉุกเฉินและทั่วไป' },
+      bio: {
+        en: 'Sam covers the clinic’s emergency roster and same-day pain relief, plus general restorative work such as fillings and crowns.',
+        th: 'แซมรับผิดชอบเวรฉุกเฉินของคลินิกและการบรรเทาปวดภายในวันเดียว รวมถึงงานบูรณะทั่วไปอย่างการอุดฟันและครอบฟัน'
+      } }
   ];
 
   const TIME_SLOTS = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
                       '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30'];
 
-  const QUICK_REPLIES = [
-    'I have a toothache — what should I do?',
-    'How much does whitening cost?',
-    'Do you bulk bill for children?',
-    'Can I move my appointment?',
-    'Is it normal to bleed when flossing?'
-  ];
+  const QUICK_REPLY_KEYS = ['qr.toothache', 'qr.whiteningCost', 'qr.bulkBill', 'qr.move', 'qr.flossBleed'];
 
   /* =====================================================================
    * Persistence
    * ===================================================================*/
-  const LS_KEY = 'brightsmile.proto.v1';
+  const LS_KEY = 'brightsmile.proto.v2';
 
   function seedState() {
     const demoId = 'pt-demo';
     const d1 = addDays(new Date(), 3), d2 = addDays(new Date(), -21);
+    const twoDaysAgo = addDays(new Date(), -2).toISOString();
     return {
+      lang: 'en',
       patients: [{
         id: demoId, first: 'Jordan', last: 'Avery', email: 'demo@brightsmile.test', password: 'demo1234',
-        phone: '0412 345 678', dob: '1991-04-18', gender: 'Non-binary', address: '8 Rosewood Ave, Southbank',
-        insurer: 'Medibank', member: 'MB-88213047', notes: 'Penicillin allergy.', marketing: true,
+        phone: '0412 345 678', dob: '1991-04-18', gender: 'Non-binary', addressKey: 'seed.address',
+        insurer: 'Medibank', member: 'MB-88213047', notesKey: 'seed.notes', marketing: true,
         createdAt: d2.toISOString()
       }],
       sessionId: null,
       appointments: [
         { id: 'AP-4821', ref: 'BS-4821', patientId: demoId, serviceId: 'svc-checkup', dentistId: 'dr-chen',
-          date: iso(d1), time: '10:00', reason: 'Six-month check-up', status: 'confirmed', reminder: true,
+          date: iso(d1), time: '10:00', reasonKey: 'seed.reasonCheckup', status: 'confirmed', reminder: true,
           createdAt: addDays(new Date(), -6).toISOString() },
         { id: 'AP-3910', ref: 'BS-3910', patientId: demoId, serviceId: 'svc-gum', dentistId: 'dr-nguyen',
-          date: iso(d2), time: '14:30', reason: 'Bleeding gums on the lower right', status: 'completed', reminder: true,
+          date: iso(d2), time: '14:30', reasonKey: 'seed.reasonGums', status: 'completed', reminder: true,
           createdAt: addDays(new Date(), -34).toISOString() }
       ],
       chats: {
         'pt-demo|dr-chen': [
-          { from: 'them', text: 'Hi Jordan — I saw your check-up is booked for next week. Anything bothering you in the meantime?',
-            at: addDays(new Date(), -2).toISOString() },
-          { from: 'me', text: 'All good, thanks! Just a bit of sensitivity to cold on the upper left.',
-            at: addDays(new Date(), -2).toISOString() },
-          { from: 'them', text: 'Noted — I’ll take a closer look at that tooth. Try a sensitive-teeth toothpaste until then and avoid very cold drinks.',
-            at: addDays(new Date(), -2).toISOString() }
+          { from: 'them', key: 'seed.chat1', at: twoDaysAgo },
+          { from: 'me', key: 'seed.chat2', at: twoDaysAgo },
+          { from: 'them', key: 'seed.chat3', at: twoDaysAgo }
         ]
       },
       unread: {}
@@ -1031,6 +1585,7 @@
   state.appointments = state.appointments || [];
   state.chats = state.chats || {};
   state.unread = state.unread || {};
+  state.lang = state.lang === 'th' ? 'th' : 'en';
 
   function save() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (err) { /* private mode: run in memory */ }
@@ -1046,12 +1601,81 @@
     const mine = patient ? state.appointments.filter(a => a.patientId === patient.id) : [];
     const body = document.body;
     if (route) body.dataset.route = route;
+    body.dataset.lang = state.lang;
     body.dataset.signedIn = String(!!patient);
     body.dataset.patient = patient ? patient.email : '';
     body.dataset.appointments = String(mine.length);
     body.dataset.upcoming = String(mine.filter(a => apptBucket(a) === 'upcoming').length);
     body.dataset.cancelled = String(mine.filter(a => a.status === 'cancelled').length);
     body.dataset.patients = String(state.patients.length);
+  }
+
+  /* =====================================================================
+   * i18n
+   * ===================================================================*/
+
+  /** Looks up a key in the active language, filling {placeholders}. */
+  function t(key, vars) {
+    const entry = STRINGS[key];
+    let out = entry ? (entry[state.lang] || entry.en) : key;
+    if (vars) {
+      Object.keys(vars).forEach(name => {
+        out = out.split('{' + name + '}').join(String(vars[name]));
+      });
+    }
+    return out;
+  }
+
+  /** Picks the active language out of a bilingual data value. */
+  function tv(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value[state.lang] || value.en;
+    return value;
+  }
+
+  /** Joins a bilingual list for display. */
+  function tvList(value, sep) {
+    const list = tv(value) || [];
+    return list.join(sep === undefined ? ', ' : sep);
+  }
+
+  function localeTag() { return state.lang === 'th' ? 'th-TH' : 'en-AU'; }
+
+  /** Text of a chat message: seeded and auto-reply messages carry a key. */
+  function msgText(m) { return m.key ? t(m.key, m.vars) : (m.text || ''); }
+  /** Free-text fields that may be seeded (and so translatable) or typed. */
+  function fieldText(obj, field) {
+    return obj[field + 'Key'] ? t(obj[field + 'Key']) : (obj[field] || '');
+  }
+
+  function setLang(lang) {
+    const next = lang === 'th' ? 'th' : 'en';
+    if (next === state.lang) return;
+    state.lang = next;
+    save();
+    applyLang();
+    const route = location.hash.replace('#/', '') || 'home';
+    render(ROUTES.includes(route) ? route : 'home');
+    // Modals are rendered as they open, so an open one cannot go stale here:
+    // its backdrop covers the toggle in the top bar.
+    toast(t('toast.langSwitched'), 'primary');
+  }
+
+  /** Pushes the active language into <html>, the toggle and all static text. */
+  function applyLang() {
+    document.documentElement.lang = state.lang;
+    document.body.dataset.lang = state.lang;
+
+    $$('[data-lang-option]').forEach(btn => {
+      const on = btn.dataset.langOption === state.lang;
+      btn.classList.toggle('btn-light', on);
+      btn.classList.toggle('btn-outline-light', !on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+
+    $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+    $$('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+    $$('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+    $$('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
   }
 
   /* =====================================================================
@@ -1078,36 +1702,42 @@
     return new Date(y, m - 1, d);
   }
   function fmtLongDate(isoStr) {
-    return parseISO(isoStr).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return parseISO(isoStr).toLocaleDateString(localeTag(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
   function fmtShortDate(isoStr) {
-    return parseISO(isoStr).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+    return parseISO(isoStr).toLocaleDateString(localeTag(), { weekday: 'short', day: 'numeric', month: 'short' });
   }
-  function fmt12h(time) {
+  /** 24-hour with the Thai time marker, 12-hour in English. */
+  function fmtTime(time) {
     const [h, m] = time.split(':').map(Number);
+    if (state.lang === 'th') return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ' น.';
     const suffix = h >= 12 ? 'pm' : 'am';
     const hour = h % 12 === 0 ? 12 : h % 12;
     return hour + ':' + String(m).padStart(2, '0') + ' ' + suffix;
   }
   function money(n) {
-    return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 0 });
+    return '$' + n.toLocaleString('en-AU', { minimumFractionDigits: 0 });
   }
   function relTime(isoStamp) {
     const diff = Date.now() - new Date(isoStamp).getTime();
     const mins = Math.round(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return mins + 'm ago';
+    if (mins < 1) return t('time.now');
+    if (mins < 60) return t('time.mins', { n: mins });
     const hrs = Math.round(mins / 60);
-    if (hrs < 24) return hrs + 'h ago';
+    if (hrs < 24) return t('time.hours', { n: hrs });
     const days = Math.round(hrs / 24);
-    if (days < 7) return days + 'd ago';
-    return new Date(isoStamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    if (days < 7) return t('time.days', { n: days });
+    return new Date(isoStamp).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
   }
+  /** Avatar initials come from the English name, so they never change script. */
   function initials(name) {
     return name.replace(/^Dr\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
   }
   function service(id) { return SERVICES.find(s => s.id === id); }
   function dentist(id) { return DENTISTS.find(d => d.id === id); }
+  function docName(doc) { return tv(doc.name); }
+  function catLabel(category) { return t('cat.' + category); }
+  function spokenLabels(list) { return list.map(l => t('spoken.' + l)).join(', '); }
   function currentPatient() { return state.patients.find(p => p.id === state.sessionId) || null; }
   function patientName(p) { return p ? p.first + ' ' + p.last : ''; }
 
@@ -1126,12 +1756,13 @@
     el.innerHTML =
       '<div class="d-flex">' +
         '<div class="toast-body">' + esc(message) + '</div>' +
-        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
+        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" ' +
+          'aria-label="' + esc(t('modal.close')) + '"></button>' +
       '</div>';
     $('#toastArea').appendChild(el);
-    const t = new bootstrap.Toast(el, { delay: 3600 });
+    const bsToast = new bootstrap.Toast(el, { delay: 3600 });
     el.addEventListener('hidden.bs.toast', () => el.remove());
-    t.show();
+    bsToast.show();
   }
 
   /* =====================================================================
@@ -1141,12 +1772,6 @@
     const doc = dentist(dentistId);
     if (!doc) return false;
     return doc.days.includes(parseISO(isoDate).getDay());
-  }
-
-  function bookedSlots(dentistId, isoDate) {
-    return state.appointments
-      .filter(a => a.dentistId === dentistId && a.date === isoDate && a.status !== 'cancelled')
-      .map(a => a.time);
   }
 
   function slotIsFree(dentistId, isoDate, time, ignoreApptId) {
@@ -1172,7 +1797,7 @@
   }
 
   function freeSlots(dentistId, isoDate, ignoreApptId) {
-    return TIME_SLOTS.filter(t => slotIsFree(dentistId, isoDate, t, ignoreApptId));
+    return TIME_SLOTS.filter(s => slotIsFree(dentistId, isoDate, s, ignoreApptId));
   }
 
   function upcomingDates(dentistId, count, ignoreApptId) {
@@ -1198,17 +1823,21 @@
           '<div class="card-body">' +
             '<div class="d-flex justify-content-between align-items-start mb-3">' +
               '<div class="icon-tile"><svg class="ico" aria-hidden="true"><use href="#i-' + svc.icon + '"></use></svg></div>' +
-              '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(svc.category) + '</span>' +
+              '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(catLabel(svc.category)) + '</span>' +
             '</div>' +
-            '<h6 class="fw-semibold mb-1">' + esc(svc.name) + '</h6>' +
-            '<p class="small text-secondary mb-3">' + esc(svc.blurb) + '</p>' +
+            '<h6 class="fw-semibold mb-1">' + esc(tv(svc.name)) + '</h6>' +
+            '<p class="small text-secondary mb-3">' + esc(tv(svc.blurb)) + '</p>' +
             '<div class="d-flex gap-3 small text-secondary mb-3">' +
-              '<span><svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>from ' + money(svc.price) + '</span>' +
-              '<span><svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>' + svc.duration + ' min</span>' +
+              '<span><svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>' +
+                esc(t('services.from', { price: money(svc.price) })) + '</span>' +
+              '<span><svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>' +
+                esc(t('services.minutes', { n: svc.duration })) + '</span>' +
             '</div>' +
             '<div class="d-flex gap-2">' +
-              '<button class="btn btn-sm btn-primary" data-testid="service-book" data-action="book-service" data-id="' + svc.id + '">Book</button>' +
-              '<button class="btn btn-sm btn-outline-secondary" data-testid="service-details" data-action="view-service" data-id="' + svc.id + '">Details</button>' +
+              '<button class="btn btn-sm btn-primary" data-testid="service-book" data-action="book-service" data-id="' + svc.id + '">' +
+                esc(t('services.book')) + '</button>' +
+              '<button class="btn btn-sm btn-outline-secondary" data-testid="service-details" data-action="view-service" data-id="' + svc.id + '">' +
+                esc(t('services.details')) + '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1221,22 +1850,22 @@
         '<div class="card h-100 border-0 shadow-sm card-hover" data-testid="dentist-card" data-dentist="' + doc.id + '">' +
           '<div class="card-body">' +
             '<div class="d-flex align-items-center gap-3 mb-3">' +
-              avatarHtml(doc.name, doc.color, 'avatar-lg') +
+              avatarHtml(doc.name.en, doc.color, 'avatar-lg') +
               '<div>' +
-                '<h6 class="fw-semibold mb-0">' + esc(doc.name) + '</h6>' +
-                '<div class="small text-secondary">' + esc(doc.title) + '</div>' +
+                '<h6 class="fw-semibold mb-0">' + esc(docName(doc)) + '</h6>' +
+                '<div class="small text-secondary">' + esc(tv(doc.title)) + '</div>' +
                 '<div class="small text-warning"><svg class="ico" aria-hidden="true"><use href="#i-star-fill"></use></svg> ' + doc.rating +
                   ' <span class="text-secondary">(' + doc.reviews + ')</span></div>' +
               '</div>' +
             '</div>' +
-            '<p class="small text-secondary mb-3">' + esc(doc.bio) + '</p>' +
+            '<p class="small text-secondary mb-3">' + esc(tv(doc.bio)) + '</p>' +
             '<div class="d-flex flex-wrap gap-1 mb-3">' +
-              doc.specialties.map(s => '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(s) + '</span>').join('') +
+              doc.specialties.map(s => '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(catLabel(s)) + '</span>').join('') +
             '</div>' +
             '<div class="d-flex gap-2">' +
-              '<button class="btn btn-sm btn-primary" data-action="book-dentist" data-id="' + doc.id + '">Book</button>' +
-              '<button class="btn btn-sm btn-outline-primary" data-action="open-chat" data-id="' + doc.id + '">Message</button>' +
-              '<button class="btn btn-sm btn-outline-secondary" data-action="view-dentist" data-id="' + doc.id + '">Profile</button>' +
+              '<button class="btn btn-sm btn-primary" data-action="book-dentist" data-id="' + doc.id + '">' + esc(t('services.book')) + '</button>' +
+              '<button class="btn btn-sm btn-outline-primary" data-action="open-chat" data-id="' + doc.id + '">' + esc(t('modal.message')) + '</button>' +
+              '<button class="btn btn-sm btn-outline-secondary" data-action="view-dentist" data-id="' + doc.id + '">' + esc(t('modal.profile')) + '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1244,22 +1873,22 @@
   }
 
   function slotGridHtml(dentistId, isoDate, selectedTime, action, ignoreApptId) {
-    if (!isoDate) return '<div class="alert alert-light border mb-0 small">Choose a date first.</div>';
+    if (!isoDate) return '<div class="alert alert-light border mb-0 small">' + esc(t('book.pickDateFirst')) + '</div>';
     const slots = freeSlots(dentistId, isoDate, ignoreApptId);
     if (!slots.length) {
       return '<div class="alert alert-warning mb-0 small"><svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-x"></use></svg>' +
-        'No times left on ' + esc(fmtShortDate(isoDate)) + '. Please pick another date.</div>';
+        esc(t('book.noTimesLeft', { date: fmtShortDate(isoDate) })) + '</div>';
     }
-    return '<div class="slot-grid">' + slots.map(t =>
-      '<button type="button" class="btn btn-sm ' + (t === selectedTime ? 'btn-primary' : 'btn-outline-primary') + '" ' +
-      'data-testid="slot-option" data-selected="' + (t === selectedTime) + '" ' +
-      'data-action="' + action + '" data-time="' + t + '">' + fmt12h(t) + '</button>').join('') + '</div>';
+    return '<div class="slot-grid">' + slots.map(time =>
+      '<button type="button" class="btn btn-sm ' + (time === selectedTime ? 'btn-primary' : 'btn-outline-primary') + '" ' +
+      'data-testid="slot-option" data-selected="' + (time === selectedTime) + '" ' +
+      'data-action="' + action + '" data-time="' + time + '">' + esc(fmtTime(time)) + '</button>').join('') + '</div>';
   }
 
   function dateStripHtml(dentistId, selectedDate, action, ignoreApptId) {
     const dates = upcomingDates(dentistId, 14, ignoreApptId);
     if (!dates.length) {
-      return '<div class="alert alert-warning mb-0 small">This dentist is fully booked for the next two months.</div>';
+      return '<div class="alert alert-warning mb-0 small">' + esc(t('book.fullyBookedMonths')) + '</div>';
     }
     return dates.map(d => {
       const dt = parseISO(d);
@@ -1267,10 +1896,10 @@
       return '<button type="button" class="date-pill ' + (d === selectedDate ? 'selected' : '') + '" ' +
         'data-testid="date-option" data-selected="' + (d === selectedDate) + '" data-free="' + free + '" ' +
         'data-action="' + action + '" data-date="' + d + '">' +
-        '<div class="dow">' + dt.toLocaleDateString(undefined, { weekday: 'short' }) + '</div>' +
+        '<div class="dow">' + esc(dt.toLocaleDateString(localeTag(), { weekday: 'short' })) + '</div>' +
         '<div class="dom">' + dt.getDate() + '</div>' +
-        '<div class="mon">' + dt.toLocaleDateString(undefined, { month: 'short' }) + '</div>' +
-        '<div class="mon text-success">' + free + ' free</div>' +
+        '<div class="mon">' + esc(dt.toLocaleDateString(localeTag(), { month: 'short' })) + '</div>' +
+        '<div class="mon text-success">' + esc(t('book.slotsFree', { n: free })) + '</div>' +
         '</button>';
     }).join('');
   }
@@ -1296,11 +1925,11 @@
     if (PROTECTED.includes(route) && !currentPatient()) {
       pendingRoute = route;
       const msgs = {
-        appointments: 'Please sign in to see your appointments.',
-        chat: 'Please sign in to message a dentist.',
-        profile: 'Please sign in to view your profile.'
+        appointments: 'login.gateAppointments',
+        chat: 'login.gateChat',
+        profile: 'login.gateProfile'
       };
-      showLoginPrompt(msgs[route]);
+      showLoginPrompt(t(msgs[route]));
       location.hash = '#/login';
       route = 'login';
     }
@@ -1314,6 +1943,7 @@
     if (route === 'home') renderHome();
     if (route === 'services') renderServices();
     if (route === 'book') renderWizard();
+    if (route === 'booked') renderBooked(state.appointments.find(a => a.id === lastBookingId));
     if (route === 'appointments') renderAppointments();
     if (route === 'chat') renderChat();
     if (route === 'profile') renderProfile();
@@ -1338,8 +1968,10 @@
     const box = $('#authArea');
     if (!p) {
       box.innerHTML =
-        '<a href="#/login" data-route="login" class="btn btn-outline-primary btn-sm" data-testid="nav-sign-in">Sign in</a>' +
-        '<a href="#/register" data-route="register" class="btn btn-primary btn-sm" data-testid="nav-register">Register</a>';
+        '<a href="#/login" data-route="login" class="btn btn-outline-primary btn-sm" data-testid="nav-sign-in">' +
+          esc(t('nav.signIn')) + '</a>' +
+        '<a href="#/register" data-route="register" class="btn btn-primary btn-sm" data-testid="nav-register">' +
+          esc(t('nav.register')) + '</a>';
     } else {
       box.innerHTML =
         '<div class="dropdown">' +
@@ -1349,11 +1981,15 @@
           '</button>' +
           '<ul class="dropdown-menu dropdown-menu-end">' +
             '<li><h6 class="dropdown-header">' + esc(patientName(p)) + '</h6></li>' +
-            '<li><a class="dropdown-item" href="#/profile" data-route="profile"><svg class="ico me-2" aria-hidden="true"><use href="#i-person"></use></svg>My profile</a></li>' +
-            '<li><a class="dropdown-item" href="#/appointments" data-route="appointments"><svg class="ico me-2" aria-hidden="true"><use href="#i-calendar2-week"></use></svg>My appointments</a></li>' +
-            '<li><a class="dropdown-item" href="#/chat" data-route="chat"><svg class="ico me-2" aria-hidden="true"><use href="#i-chat-dots"></use></svg>Messages</a></li>' +
+            '<li><a class="dropdown-item" href="#/profile" data-route="profile">' +
+              '<svg class="ico me-2" aria-hidden="true"><use href="#i-person"></use></svg>' + esc(t('nav.profile')) + '</a></li>' +
+            '<li><a class="dropdown-item" href="#/appointments" data-route="appointments">' +
+              '<svg class="ico me-2" aria-hidden="true"><use href="#i-calendar2-week"></use></svg>' + esc(t('nav.appointments')) + '</a></li>' +
+            '<li><a class="dropdown-item" href="#/chat" data-route="chat">' +
+              '<svg class="ico me-2" aria-hidden="true"><use href="#i-chat-dots"></use></svg>' + esc(t('nav.messages')) + '</a></li>' +
             '<li><hr class="dropdown-divider"></li>' +
-            '<li><button class="dropdown-item text-danger" data-testid="logout" data-action="logout"><svg class="ico me-2" aria-hidden="true"><use href="#i-box-arrow-right"></use></svg>Sign out</button></li>' +
+            '<li><button class="dropdown-item text-danger" data-testid="logout" data-action="logout">' +
+              '<svg class="ico me-2" aria-hidden="true"><use href="#i-box-arrow-right"></use></svg>' + esc(t('nav.signOut')) + '</button></li>' +
           '</ul>' +
         '</div>';
     }
@@ -1397,12 +2033,15 @@
     const categories = ['All'].concat(Array.from(new Set(SERVICES.map(s => s.category))));
     $('#serviceFilters').innerHTML = categories.map(c =>
       '<button class="btn btn-sm ' + (c === serviceFilter ? 'btn-primary' : 'btn-outline-secondary') + '" ' +
-      'data-action="filter-service" data-cat="' + esc(c) + '">' + esc(c) + '</button>').join('');
+      'data-action="filter-service" data-cat="' + esc(c) + '">' + esc(catLabel(c)) + '</button>').join('');
 
     const q = ($('#serviceSearch').value || '').trim().toLowerCase();
     const list = SERVICES.filter(s => {
       const catOk = serviceFilter === 'All' || s.category === serviceFilter;
-      const text = (s.name + ' ' + s.blurb + ' ' + s.category + ' ' + s.detail).toLowerCase();
+      // Search both languages, so a Thai term still finds a treatment in
+      // English mode and vice versa.
+      const text = [s.name.en, s.name.th, s.blurb.en, s.blurb.th, s.detail.en, s.detail.th,
+        s.category, catLabel(s.category)].join(' ').toLowerCase();
       return catOk && (!q || text.includes(q));
     });
 
@@ -1410,64 +2049,80 @@
     $('#serviceEmpty').classList.toggle('d-none', list.length > 0);
   }
 
-  function openServiceModal(id) {
+  function renderServiceModal(id) {
     const svc = service(id);
     if (!svc) return;
-    $('#serviceModalTitle').textContent = svc.name;
+    $('#serviceModalTitle').textContent = tv(svc.name);
     const docs = DENTISTS.filter(d => d.specialties.includes(svc.category));
     $('#serviceModalBody').innerHTML =
       '<div class="d-flex align-items-center gap-3 mb-3">' +
         '<div class="icon-tile"><svg class="ico" aria-hidden="true"><use href="#i-' + svc.icon + '"></use></svg></div>' +
         '<div>' +
-          '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(svc.category) + '</span>' +
+          '<span class="badge rounded-pill bg-brand-soft text-primary">' + esc(catLabel(svc.category)) + '</span>' +
           '<div class="small text-secondary mt-1">' +
-            '<svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>from ' + money(svc.price) +
-            ' &nbsp;·&nbsp; <svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>about ' + svc.duration + ' minutes</div>' +
+            '<svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>' +
+            esc(t('services.from', { price: money(svc.price) })) +
+            ' &nbsp;·&nbsp; <svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>' +
+            esc(t('services.aboutMinutes', { n: svc.duration })) + '</div>' +
         '</div>' +
       '</div>' +
-      '<p>' + esc(svc.detail) + '</p>' +
-      '<h6 class="fw-semibold small text-uppercase text-secondary mt-4">What’s included</h6>' +
-      '<ul class="small">' + svc.includes.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>' +
+      '<p>' + esc(tv(svc.detail)) + '</p>' +
+      '<h6 class="fw-semibold small text-uppercase text-secondary mt-4">' + esc(t('modal.included')) + '</h6>' +
+      '<ul class="small">' + tv(svc.includes).map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>' +
       (docs.length ?
-        '<h6 class="fw-semibold small text-uppercase text-secondary mt-4">Dentists who provide this</h6>' +
+        '<h6 class="fw-semibold small text-uppercase text-secondary mt-4">' + esc(t('modal.whoProvides')) + '</h6>' +
         '<div class="d-flex flex-wrap gap-3">' + docs.map(d =>
-          '<div class="d-flex align-items-center gap-2">' + avatarHtml(d.name, d.color, 'avatar-sm') +
-          '<div class="small"><div class="fw-semibold">' + esc(d.name) + '</div>' +
-          '<div class="text-secondary">' + esc(d.title) + '</div></div></div>').join('') + '</div>'
+          '<div class="d-flex align-items-center gap-2">' + avatarHtml(d.name.en, d.color, 'avatar-sm') +
+          '<div class="small"><div class="fw-semibold">' + esc(docName(d)) + '</div>' +
+          '<div class="text-secondary">' + esc(tv(d.title)) + '</div></div></div>').join('') + '</div>'
         : '') +
       '<div class="alert alert-light border small mt-4 mb-0">' +
-        '<svg class="ico me-1" aria-hidden="true"><use href="#i-info-circle"></use></svg>Prices are indicative and confirmed at your consultation. ' +
-        'Health-fund rebates are claimed on the spot with HICAPS.</div>';
+        '<svg class="ico me-1" aria-hidden="true"><use href="#i-info-circle"></use></svg>' +
+        esc(t('modal.priceNote')) + '</div>';
 
     $('#serviceModalBook').dataset.id = svc.id;
+  }
+
+  function openServiceModal(id) {
+    renderServiceModal(id);
     bootstrap.Modal.getOrCreateInstance($('#serviceModal')).show();
   }
 
-  function openDentistModal(id) {
+  function renderDentistModal(id) {
     const doc = dentist(id);
     if (!doc) return;
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    $('#dentistModalTitle').textContent = doc.name;
+    // Short weekday names for the active language, from a reference week.
+    const dayName = d => new Date(2024, 0, 7 + d).toLocaleDateString(localeTag(), { weekday: 'short' });
+    const next = upcomingDates(doc.id, 1);
+    $('#dentistModalTitle').textContent = docName(doc);
     $('#dentistModalBody').innerHTML =
       '<div class="d-flex align-items-center gap-3 mb-3">' +
-        avatarHtml(doc.name, doc.color, 'avatar-lg') +
+        avatarHtml(doc.name.en, doc.color, 'avatar-lg') +
         '<div>' +
-          '<h6 class="fw-semibold mb-0">' + esc(doc.name) + '</h6>' +
-          '<div class="small text-secondary">' + esc(doc.title) + ' · ' + doc.experience + ' years experience</div>' +
+          '<h6 class="fw-semibold mb-0">' + esc(docName(doc)) + '</h6>' +
+          '<div class="small text-secondary">' + esc(tv(doc.title)) + ' · ' +
+            esc(t('modal.yearsExp', { n: doc.experience })) + '</div>' +
           '<div class="small text-warning"><svg class="ico" aria-hidden="true"><use href="#i-star-fill"></use></svg> ' + doc.rating +
-            ' <span class="text-secondary">from ' + doc.reviews + ' reviews</span></div>' +
+            ' <span class="text-secondary">' + esc(t('modal.fromReviews', { n: doc.reviews })) + '</span></div>' +
         '</div>' +
       '</div>' +
-      '<p class="small">' + esc(doc.bio) + '</p>' +
+      '<p class="small">' + esc(tv(doc.bio)) + '</p>' +
       '<dl class="row small mb-0">' +
-        '<dt class="col-4 text-secondary fw-normal">Specialties</dt><dd class="col-8">' + esc(doc.specialties.join(', ')) + '</dd>' +
-        '<dt class="col-4 text-secondary fw-normal">Languages</dt><dd class="col-8">' + esc(doc.languages.join(', ')) + '</dd>' +
-        '<dt class="col-4 text-secondary fw-normal">Works</dt><dd class="col-8">' + doc.days.map(d => dayNames[d]).join(', ') + '</dd>' +
-        '<dt class="col-4 text-secondary fw-normal">Next available</dt><dd class="col-8">' +
-          (upcomingDates(doc.id, 1).length ? esc(fmtShortDate(upcomingDates(doc.id, 1)[0])) : 'Fully booked') + '</dd>' +
+        '<dt class="col-4 text-secondary fw-normal">' + esc(t('modal.specialties')) + '</dt>' +
+        '<dd class="col-8">' + esc(doc.specialties.map(catLabel).join(', ')) + '</dd>' +
+        '<dt class="col-4 text-secondary fw-normal">' + esc(t('modal.languages')) + '</dt>' +
+        '<dd class="col-8">' + esc(spokenLabels(doc.languages)) + '</dd>' +
+        '<dt class="col-4 text-secondary fw-normal">' + esc(t('modal.works')) + '</dt>' +
+        '<dd class="col-8">' + esc(doc.days.map(dayName).join(', ')) + '</dd>' +
+        '<dt class="col-4 text-secondary fw-normal">' + esc(t('modal.nextAvailable')) + '</dt>' +
+        '<dd class="col-8">' + esc(next.length ? fmtShortDate(next[0]) : t('book.fullyBooked')) + '</dd>' +
       '</dl>';
     $('#dentistModalBook').dataset.id = doc.id;
     $('#dentistModalChat').dataset.id = doc.id;
+  }
+
+  function openDentistModal(id) {
+    renderDentistModal(id);
     bootstrap.Modal.getOrCreateInstance($('#dentistModal')).show();
   }
 
@@ -1520,16 +2175,16 @@
     const nextBtn = $('[data-action="wizard-next"]');
     backBtn.classList.toggle('invisible', booking.step === 1);
     nextBtn.innerHTML = booking.step === 4
-      ? '<svg class="ico me-1" aria-hidden="true"><use href="#i-check2-circle"></use></svg> Confirm booking'
-      : 'Continue <svg class="ico ms-1" aria-hidden="true"><use href="#i-arrow-right"></use></svg>';
+      ? '<svg class="ico me-1" aria-hidden="true"><use href="#i-check2-circle"></use></svg> ' + esc(t('book.confirm'))
+      : esc(t('book.continue')) + ' <svg class="ico ms-1" aria-hidden="true"><use href="#i-arrow-right"></use></svg>';
 
     const hints = {
-      1: booking.serviceId ? service(booking.serviceId).name + ' selected' : 'Select a treatment to continue',
-      2: booking.dentistId ? dentist(booking.dentistId).name + ' selected' : 'Select a dentist to continue',
+      1: booking.serviceId ? t('book.selected', { name: tv(service(booking.serviceId).name) }) : t('book.needService'),
+      2: booking.dentistId ? t('book.selected', { name: docName(dentist(booking.dentistId)) }) : t('book.needDentist'),
       3: booking.date && booking.time
-        ? fmtShortDate(booking.date) + ' at ' + fmt12h(booking.time)
-        : 'Select a date and time to continue',
-      4: 'Check the details, then confirm'
+        ? t('book.slotSelected', { date: fmtShortDate(booking.date), time: fmtTime(booking.time) })
+        : t('book.needSlot'),
+      4: t('book.checkDetails')
     };
     $('#wizardStatus').textContent = hints[booking.step] || '';
   }
@@ -1546,11 +2201,13 @@
               '<div class="icon-tile"><svg class="ico" aria-hidden="true"><use href="#i-' + svc.icon + '"></use></svg></div>' +
               '<svg class="ico fs-5 option-check" aria-hidden="true"><use href="#i-check-circle-fill"></use></svg>' +
             '</div>' +
-            '<h6 class="fw-semibold mb-1">' + esc(svc.name) + '</h6>' +
-            '<div class="small text-secondary mb-2">' + esc(svc.blurb) + '</div>' +
+            '<h6 class="fw-semibold mb-1">' + esc(tv(svc.name)) + '</h6>' +
+            '<div class="small text-secondary mb-2">' + esc(tv(svc.blurb)) + '</div>' +
             '<div class="small text-secondary">' +
-              '<svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>from ' + money(svc.price) +
-              ' · <svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>' + svc.duration + ' min</div>' +
+              '<svg class="ico me-1" aria-hidden="true"><use href="#i-cash-coin"></use></svg>' +
+              esc(t('services.from', { price: money(svc.price) })) +
+              ' · <svg class="ico me-1" aria-hidden="true"><use href="#i-clock"></use></svg>' +
+              esc(t('services.minutes', { n: svc.duration })) + '</div>' +
           '</div>' +
         '</div>' +
       '</div>').join('');
@@ -1559,7 +2216,7 @@
   function renderWizardStep2() {
     const svc = service(booking.serviceId);
     $('#bookDentistHint').textContent = svc
-      ? 'Showing dentists who provide ' + svc.name + ' (' + svc.category + ').'
+      ? t('book.step2Hint', { service: tv(svc.name), category: catLabel(svc.category) })
       : '';
     $('#showAllDentists').checked = booking.showAll;
 
@@ -1572,17 +2229,18 @@
              'data-action="pick-dentist" data-id="' + doc.id + '" role="button" tabindex="0">' +
           '<div class="card-body">' +
             '<div class="d-flex justify-content-between align-items-start mb-3">' +
-              avatarHtml(doc.name, doc.color, 'avatar-lg') +
+              avatarHtml(doc.name.en, doc.color, 'avatar-lg') +
               '<svg class="ico fs-5 option-check" aria-hidden="true"><use href="#i-check-circle-fill"></use></svg>' +
             '</div>' +
-            '<h6 class="fw-semibold mb-0">' + esc(doc.name) + '</h6>' +
-            '<div class="small text-secondary">' + esc(doc.title) + '</div>' +
+            '<h6 class="fw-semibold mb-0">' + esc(docName(doc)) + '</h6>' +
+            '<div class="small text-secondary">' + esc(tv(doc.title)) + '</div>' +
             '<div class="small text-warning mb-2"><svg class="ico" aria-hidden="true"><use href="#i-star-fill"></use></svg> ' + doc.rating +
               ' <span class="text-secondary">(' + doc.reviews + ')</span></div>' +
-            '<div class="small text-secondary mb-2"><svg class="ico me-1" aria-hidden="true"><use href="#i-translate"></use></svg>' + esc(doc.languages.join(', ')) + '</div>' +
+            '<div class="small text-secondary mb-2"><svg class="ico me-1" aria-hidden="true"><use href="#i-translate"></use></svg>' +
+              esc(spokenLabels(doc.languages)) + '</div>' +
             '<div class="small ' + (next.length ? 'text-success' : 'text-danger') + '">' +
               '<svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-check"></use></svg>' +
-              (next.length ? 'Next free ' + esc(fmtShortDate(next[0])) : 'Fully booked') + '</div>' +
+              esc(next.length ? t('book.nextFree', { date: fmtShortDate(next[0]) }) : t('book.fullyBooked')) + '</div>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1593,7 +2251,7 @@
     const doc = dentist(booking.dentistId);
     const svc = service(booking.serviceId);
     $('#bookSlotHint').textContent = doc && svc
-      ? svc.name + ' with ' + doc.name + ' · about ' + svc.duration + ' minutes in the chair.'
+      ? t('book.step3Hint', { service: tv(svc.name), dentist: docName(doc), n: svc.duration })
       : '';
 
     // Drop a stale date that is no longer offered for this dentist.
@@ -1614,24 +2272,30 @@
     $('#bookSummary').innerHTML =
       '<div class="card border-0 shadow-sm">' +
         '<div class="card-body">' +
-          '<h6 class="fw-semibold mb-3">Appointment details</h6>' +
+          '<h6 class="fw-semibold mb-3">' + esc(t('book.apptDetails')) + '</h6>' +
           '<div class="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom">' +
             '<div class="icon-tile"><svg class="ico" aria-hidden="true"><use href="#i-' + svc.icon + '"></use></svg></div>' +
-            '<div><div class="fw-semibold">' + esc(svc.name) + '</div>' +
-            '<div class="small text-secondary">' + esc(svc.category) + ' · ' + svc.duration + ' min</div></div>' +
+            '<div><div class="fw-semibold">' + esc(tv(svc.name)) + '</div>' +
+            '<div class="small text-secondary">' + esc(catLabel(svc.category)) + ' · ' +
+              esc(t('services.minutes', { n: svc.duration })) + '</div></div>' +
           '</div>' +
           '<div class="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom">' +
-            avatarHtml(doc.name, doc.color) +
-            '<div><div class="fw-semibold">' + esc(doc.name) + '</div>' +
-            '<div class="small text-secondary">' + esc(doc.title) + '</div></div>' +
+            avatarHtml(doc.name.en, doc.color) +
+            '<div><div class="fw-semibold">' + esc(docName(doc)) + '</div>' +
+            '<div class="small text-secondary">' + esc(tv(doc.title)) + '</div></div>' +
           '</div>' +
           '<dl class="row mb-0">' +
-            '<dt class="col-sm-4 text-secondary fw-normal">Date</dt><dd class="col-sm-8 fw-semibold">' + esc(fmtLongDate(booking.date)) + '</dd>' +
-            '<dt class="col-sm-4 text-secondary fw-normal">Time</dt><dd class="col-sm-8 fw-semibold">' + fmt12h(booking.time) + '</dd>' +
-            '<dt class="col-sm-4 text-secondary fw-normal">Location</dt><dd class="col-sm-8">12 Marine Parade, Southbank</dd>' +
-            '<dt class="col-sm-4 text-secondary fw-normal">Estimated fee</dt><dd class="col-sm-8">' + money(svc.price) +
-              ' <span class="small text-secondary">before health-fund rebate</span></dd>' +
-            (reason ? '<dt class="col-sm-4 text-secondary fw-normal">Your notes</dt><dd class="col-sm-8">' + esc(reason) + '</dd>' : '') +
+            '<dt class="col-sm-4 text-secondary fw-normal">' + esc(t('book.date')) + '</dt>' +
+            '<dd class="col-sm-8 fw-semibold">' + esc(fmtLongDate(booking.date)) + '</dd>' +
+            '<dt class="col-sm-4 text-secondary fw-normal">' + esc(t('book.time')) + '</dt>' +
+            '<dd class="col-sm-8 fw-semibold">' + esc(fmtTime(booking.time)) + '</dd>' +
+            '<dt class="col-sm-4 text-secondary fw-normal">' + esc(t('book.location')) + '</dt>' +
+            '<dd class="col-sm-8">' + esc(t('top.address')) + '</dd>' +
+            '<dt class="col-sm-4 text-secondary fw-normal">' + esc(t('book.estFee')) + '</dt>' +
+            '<dd class="col-sm-8">' + money(svc.price) +
+              ' <span class="small text-secondary">' + esc(t('book.beforeRebate')) + '</span></dd>' +
+            (reason ? '<dt class="col-sm-4 text-secondary fw-normal">' + esc(t('book.yourNotes')) + '</dt>' +
+              '<dd class="col-sm-8">' + esc(reason) + '</dd>' : '') +
           '</dl>' +
         '</div>' +
       '</div>';
@@ -1645,23 +2309,24 @@
             '<div class="small text-secondary">' + esc(p.phone) + '</div></div>' +
         '</div>'
       : '<div class="alert alert-warning small mb-0">' +
-          '<svg class="ico me-1" aria-hidden="true"><use href="#i-person-exclamation"></use></svg>You need a patient record to confirm.' +
+          '<svg class="ico me-1" aria-hidden="true"><use href="#i-person-exclamation"></use></svg>' +
+          esc(t('book.needRecord')) +
           '<div class="d-flex gap-2 mt-2">' +
-            '<a href="#/register" data-route="register" class="btn btn-sm btn-primary">Register</a>' +
-            '<a href="#/login" data-route="login" class="btn btn-sm btn-outline-primary">Sign in</a>' +
+            '<a href="#/register" data-route="register" class="btn btn-sm btn-primary">' + esc(t('nav.register')) + '</a>' +
+            '<a href="#/login" data-route="login" class="btn btn-sm btn-outline-primary">' + esc(t('nav.signIn')) + '</a>' +
           '</div>' +
         '</div>';
   }
 
   function wizardNext() {
     if (booking.step === 1) {
-      if (!booking.serviceId) return toast('Please choose a treatment first.', 'warning');
+      if (!booking.serviceId) return toast(t('toast.pickService'), 'warning');
       booking.step = 2;
     } else if (booking.step === 2) {
-      if (!booking.dentistId) return toast('Please choose a dentist first.', 'warning');
+      if (!booking.dentistId) return toast(t('toast.pickDentist'), 'warning');
       booking.step = 3;
     } else if (booking.step === 3) {
-      if (!booking.date || !booking.time) return toast('Please choose a date and a time.', 'warning');
+      if (!booking.date || !booking.time) return toast(t('toast.pickSlot'), 'warning');
       booking.step = 4;
     } else {
       return confirmBooking();
@@ -1677,17 +2342,17 @@
     const p = currentPatient();
     if (!p) {
       pendingRoute = 'book';
-      showLoginPrompt('Sign in or register to confirm your appointment — we’ve kept your selected time.');
+      showLoginPrompt(t('login.gateBooking'));
       navigate('login');
       return;
     }
     if (!$('#agreePolicy').checked) {
-      toast('Please acknowledge the cancellation policy.', 'warning');
+      toast(t('toast.agreePolicy'), 'warning');
       $('#agreePolicy').focus();
       return;
     }
     if (!slotIsFree(booking.dentistId, booking.date, booking.time)) {
-      toast('Sorry, that slot was just taken. Please pick another time.', 'danger');
+      toast(t('toast.slotTaken'), 'danger');
       booking.time = null;
       booking.step = 3;
       renderWizard();
@@ -1714,25 +2379,32 @@
 
     renderBooked(appt);
     navigate('booked');
-    render('booked'); // 'booked' has no render hook in the router switch
-    toast('Appointment confirmed — reference ' + ref, 'success');
+    render('booked');
+    toast(t('toast.booked', { ref: ref }), 'success');
   }
 
   function renderBooked(appt) {
+    if (!appt) return;
     const svc = service(appt.serviceId);
     const doc = dentist(appt.dentistId);
     const p = state.patients.find(x => x.id === appt.patientId);
+    const reason = fieldText(appt, 'reason');
     $('#bookedSummary').innerHTML =
       '<div class="row g-3">' +
-        '<div class="col-sm-6"><div class="small text-secondary">Reference</div>' +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.ref')) + '</div>' +
           '<div class="fw-semibold" data-testid="booking-reference">' + esc(appt.ref) + '</div></div>' +
-        '<div class="col-sm-6"><div class="small text-secondary">Patient</div><div class="fw-semibold">' + esc(patientName(p)) + '</div></div>' +
-        '<div class="col-sm-6"><div class="small text-secondary">Treatment</div><div class="fw-semibold">' + esc(svc.name) + '</div></div>' +
-        '<div class="col-sm-6"><div class="small text-secondary">Dentist</div><div class="fw-semibold">' + esc(doc.name) + '</div></div>' +
-        '<div class="col-sm-6"><div class="small text-secondary">When</div><div class="fw-semibold">' +
-          esc(fmtLongDate(appt.date)) + ' at ' + fmt12h(appt.time) + '</div></div>' +
-        '<div class="col-sm-6"><div class="small text-secondary">Where</div><div class="fw-semibold">12 Marine Parade, Southbank</div></div>' +
-        (appt.reason ? '<div class="col-12"><div class="small text-secondary">Your notes</div><div>' + esc(appt.reason) + '</div></div>' : '') +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.patient')) + '</div>' +
+          '<div class="fw-semibold">' + esc(patientName(p)) + '</div></div>' +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.treatment')) + '</div>' +
+          '<div class="fw-semibold">' + esc(tv(svc.name)) + '</div></div>' +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.dentist')) + '</div>' +
+          '<div class="fw-semibold">' + esc(docName(doc)) + '</div></div>' +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.when')) + '</div>' +
+          '<div class="fw-semibold">' + esc(t('booked.at', { date: fmtLongDate(appt.date), time: fmtTime(appt.time) })) + '</div></div>' +
+        '<div class="col-sm-6"><div class="small text-secondary">' + esc(t('booked.where')) + '</div>' +
+          '<div class="fw-semibold">' + esc(t('top.address')) + '</div></div>' +
+        (reason ? '<div class="col-12"><div class="small text-secondary">' + esc(t('book.yourNotes')) + '</div>' +
+          '<div>' + esc(reason) + '</div></div>' : '') +
       '</div>';
   }
 
@@ -1769,16 +2441,16 @@
     const list = buckets[apptTab];
     if (!list.length) {
       const empty = {
-        upcoming: ['calendar-plus', 'No upcoming appointments', 'Book a visit and it will show up here.'],
-        past: ['clock-history', 'No past visits yet', 'Your treatment history will appear here after your first visit.'],
-        cancelled: ['calendar-x', 'Nothing cancelled', 'Cancelled appointments are kept here for your records.']
+        upcoming: ['calendar-plus', 'appts.emptyUpcoming', 'appts.emptyUpcomingSub'],
+        past: ['clock-history', 'appts.emptyPast', 'appts.emptyPastSub'],
+        cancelled: ['calendar-x', 'appts.emptyCancelled', 'appts.emptyCancelledSub']
       }[apptTab];
       $('#apptList').innerHTML =
         '<div class="col-12"><div class="card border-0 shadow-sm text-center"><div class="card-body p-5">' +
           '<div class="display-6 text-secondary opacity-50 mb-2"><svg class="ico" aria-hidden="true"><use href="#i-' + empty[0] + '"></use></svg></div>' +
-          '<h6 class="fw-semibold">' + empty[1] + '</h6>' +
-          '<p class="text-secondary small mb-3">' + empty[2] + '</p>' +
-          '<a href="#/book" data-route="book" class="btn btn-primary btn-sm">Book an appointment</a>' +
+          '<h6 class="fw-semibold">' + esc(t(empty[1])) + '</h6>' +
+          '<p class="text-secondary small mb-3">' + esc(t(empty[2])) + '</p>' +
+          '<a href="#/book" data-route="book" class="btn btn-primary btn-sm">' + esc(t('home.ctaBook')) + '</a>' +
         '</div></div></div>';
       return;
     }
@@ -1787,12 +2459,16 @@
       const svc = service(a.serviceId);
       const doc = dentist(a.dentistId);
       const bucket = apptBucket(a);
+      const reason = fieldText(a, 'reason');
       const statusBadge = {
-        upcoming: '<span class="badge text-bg-success">Confirmed</span>',
-        past: '<span class="badge text-bg-secondary">Completed</span>',
-        cancelled: '<span class="badge text-bg-danger">Cancelled</span>'
+        upcoming: '<span class="badge text-bg-success">' + esc(t('appts.statusConfirmed')) + '</span>',
+        past: '<span class="badge text-bg-secondary">' + esc(t('appts.statusCompleted')) + '</span>',
+        cancelled: '<span class="badge text-bg-danger">' + esc(t('appts.statusCancelled')) + '</span>'
       }[bucket];
       const daysAway = Math.ceil((parseISO(a.date).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
+      const whenBadge = daysAway === 0 ? t('appts.today')
+        : daysAway === 1 ? t('appts.tomorrow')
+        : t('appts.inDays', { n: daysAway });
 
       return '<div class="col-lg-6">' +
         '<div class="card h-100 border-0 shadow-sm" data-testid="appt-card" data-appt="' + a.id + '" ' +
@@ -1801,37 +2477,37 @@
             '<div class="d-flex justify-content-between align-items-start mb-3">' +
               '<div class="d-flex align-items-center gap-2">' +
                 '<div class="icon-tile"><svg class="ico" aria-hidden="true"><use href="#i-' + svc.icon + '"></use></svg></div>' +
-                '<div><h6 class="fw-semibold mb-0">' + esc(svc.name) + '</h6>' +
-                  '<div class="small text-secondary">Ref ' + esc(a.ref) + '</div></div>' +
+                '<div><h6 class="fw-semibold mb-0">' + esc(tv(svc.name)) + '</h6>' +
+                  '<div class="small text-secondary">' + esc(t('appts.refShort', { ref: a.ref })) + '</div></div>' +
               '</div>' + statusBadge +
             '</div>' +
             '<div class="bg-brand-soft rounded-3 p-3 mb-3" data-testid="appt-when">' +
               '<div class="d-flex align-items-center gap-2 fw-semibold">' +
-                '<svg class="ico text-primary" aria-hidden="true"><use href="#i-calendar-event"></use></svg>' + esc(fmtLongDate(a.date)) + '</div>' +
+                '<svg class="ico text-primary" aria-hidden="true"><use href="#i-calendar-event"></use></svg>' +
+                esc(fmtLongDate(a.date)) + '</div>' +
               '<div class="d-flex align-items-center gap-2 fw-semibold">' +
-                '<svg class="ico text-primary" aria-hidden="true"><use href="#i-clock"></use></svg>' + fmt12h(a.time) +
+                '<svg class="ico text-primary" aria-hidden="true"><use href="#i-clock"></use></svg>' + esc(fmtTime(a.time)) +
                 (bucket === 'upcoming' && daysAway >= 0
-                  ? ' <span class="badge text-bg-light fw-normal">' +
-                    (daysAway === 0 ? 'today' : daysAway === 1 ? 'tomorrow' : 'in ' + daysAway + ' days') + '</span>'
+                  ? ' <span class="badge text-bg-light fw-normal">' + esc(whenBadge) + '</span>'
                   : '') +
               '</div>' +
             '</div>' +
             '<div class="d-flex align-items-center gap-2 mb-3">' +
-              avatarHtml(doc.name, doc.color, 'avatar-sm') +
-              '<div class="small"><div class="fw-semibold">' + esc(doc.name) + '</div>' +
-              '<div class="text-secondary">' + esc(doc.title) + '</div></div>' +
+              avatarHtml(doc.name.en, doc.color, 'avatar-sm') +
+              '<div class="small"><div class="fw-semibold">' + esc(docName(doc)) + '</div>' +
+              '<div class="text-secondary">' + esc(tv(doc.title)) + '</div></div>' +
             '</div>' +
-            (a.reason ? '<p class="small text-secondary border-start ps-3 mb-3">' + esc(a.reason) + '</p>' : '') +
+            (reason ? '<p class="small text-secondary border-start ps-3 mb-3">' + esc(reason) + '</p>' : '') +
             '<div class="d-flex flex-wrap gap-2">' +
               (bucket === 'upcoming'
                 ? '<button class="btn btn-sm btn-outline-primary" data-testid="appt-reschedule" data-action="reschedule" data-id="' + a.id + '">' +
-                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-calendar2-range"></use></svg>Reschedule</button>' +
+                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-calendar2-range"></use></svg>' + esc(t('appts.reschedule')) + '</button>' +
                   '<button class="btn btn-sm btn-outline-danger" data-testid="appt-cancel" data-action="cancel-appt" data-id="' + a.id + '">' +
-                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-x-circle"></use></svg>Cancel</button>'
+                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-x-circle"></use></svg>' + esc(t('appts.cancel')) + '</button>'
                 : '<button class="btn btn-sm btn-outline-primary" data-testid="appt-rebook" data-action="book-service" data-id="' + svc.id + '">' +
-                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-repeat"></use></svg>Book again</button>') +
+                    '<svg class="ico me-1" aria-hidden="true"><use href="#i-arrow-repeat"></use></svg>' + esc(t('appts.rebook')) + '</button>') +
               '<button class="btn btn-sm btn-outline-secondary" data-testid="appt-message" data-action="open-chat" data-id="' + doc.id + '">' +
-                '<svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg>Message</button>' +
+                '<svg class="ico me-1" aria-hidden="true"><use href="#i-chat-dots"></use></svg>' + esc(t('appts.message')) + '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1842,15 +2518,22 @@
   /* Reschedule ---------------------------------------------------------*/
   let reschedule = { apptId: null, date: null, time: null };
 
+  function renderRescheduleContext() {
+    const appt = state.appointments.find(a => a.id === reschedule.apptId);
+    if (!appt) return;
+    $('#rescheduleContext').innerHTML = t('resched.context', {
+      service: esc(tv(service(appt.serviceId).name)),
+      dentist: esc(docName(dentist(appt.dentistId))),
+      date: esc(fmtShortDate(appt.date)),
+      time: esc(fmtTime(appt.time))
+    });
+  }
+
   function openReschedule(apptId) {
     const appt = state.appointments.find(a => a.id === apptId);
     if (!appt) return;
     reschedule = { apptId: apptId, date: appt.date, time: appt.time };
-
-    const doc = dentist(appt.dentistId);
-    const svc = service(appt.serviceId);
-    $('#rescheduleContext').innerHTML = esc(svc.name) + ' with ' + esc(doc.name) +
-      ' — currently <strong>' + esc(fmtShortDate(appt.date)) + ' at ' + fmt12h(appt.time) + '</strong>.';
+    renderRescheduleContext();
     renderRescheduleBody();
     bootstrap.Modal.getOrCreateInstance($('#rescheduleModal')).show();
   }
@@ -1877,20 +2560,28 @@
     bootstrap.Modal.getOrCreateInstance($('#rescheduleModal')).hide();
     apptTab = 'upcoming';
     renderAppointments();
-    toast('Moved to ' + fmtShortDate(appt.date) + ' at ' + fmt12h(appt.time) + '.', 'success');
+    toast(t('toast.moved', { date: fmtShortDate(appt.date), time: fmtTime(appt.time) }), 'success');
   }
 
   /* Cancel -------------------------------------------------------------*/
   let cancelId = null;
 
+  function renderCancelContext() {
+    const appt = state.appointments.find(a => a.id === cancelId);
+    if (!appt) return;
+    $('#cancelContext').innerHTML = t('cancelModal.context', {
+      service: esc(tv(service(appt.serviceId).name)),
+      dentist: esc(docName(dentist(appt.dentistId))),
+      date: esc(fmtShortDate(appt.date)),
+      time: esc(fmtTime(appt.time))
+    });
+  }
+
   function openCancel(apptId) {
     const appt = state.appointments.find(a => a.id === apptId);
     if (!appt) return;
     cancelId = apptId;
-    const svc = service(appt.serviceId);
-    const doc = dentist(appt.dentistId);
-    $('#cancelContext').innerHTML = 'You are cancelling <strong>' + esc(svc.name) + '</strong> with ' +
-      esc(doc.name) + ' on <strong>' + esc(fmtShortDate(appt.date)) + ' at ' + fmt12h(appt.time) + '</strong>.';
+    renderCancelContext();
     $('#cancelReason').value = '';
     bootstrap.Modal.getOrCreateInstance($('#cancelModal')).show();
   }
@@ -1905,7 +2596,7 @@
     bootstrap.Modal.getOrCreateInstance($('#cancelModal')).hide();
     apptTab = 'cancelled';
     renderAppointments();
-    toast('Appointment cancelled.', 'secondary');
+    toast(t('toast.cancelled'), 'secondary');
   }
 
   /* =====================================================================
@@ -1944,7 +2635,8 @@
   function renderChatThreads() {
     const q = ($('#chatSearch').value || '').trim().toLowerCase();
     const list = DENTISTS.filter(d =>
-      !q || (d.name + ' ' + d.title + ' ' + d.specialties.join(' ')).toLowerCase().includes(q));
+      !q || [d.name.en, d.name.th, tv(d.title), d.specialties.map(catLabel).join(' ')]
+        .join(' ').toLowerCase().includes(q));
 
     $('#chatThreads').innerHTML = list.map(d => {
       const msgs = threadMessages(d.id);
@@ -1955,21 +2647,21 @@
           'data-active="' + (d.id === activeThread) + '" data-unread="' + unread + '" ' +
           'data-action="select-thread" data-id="' + d.id + '">' +
         '<div class="d-flex gap-2 align-items-center">' +
-          avatarHtml(d.name, d.color, 'avatar-sm') +
+          avatarHtml(d.name.en, d.color, 'avatar-sm') +
           '<div class="flex-grow-1 min-w-0">' +
             '<div class="d-flex justify-content-between align-items-center gap-2">' +
-              '<span class="fw-semibold small text-truncate">' + esc(d.name) + '</span>' +
+              '<span class="fw-semibold small text-truncate">' + esc(docName(d)) + '</span>' +
               (last ? '<span class="text-secondary" style="font-size:.68rem">' + esc(relTime(last.at)) + '</span>' : '') +
             '</div>' +
             '<div class="d-flex justify-content-between align-items-center gap-2">' +
               '<span class="small text-secondary text-truncate">' +
-                (last ? (last.from === 'me' ? 'You: ' : '') + esc(last.text) : esc(d.title)) + '</span>' +
+                (last ? esc((last.from === 'me' ? t('chat.you') : '') + msgText(last)) : esc(tv(d.title))) + '</span>' +
               (unread ? '<span class="badge rounded-pill text-bg-danger">' + unread + '</span>' : '') +
             '</div>' +
           '</div>' +
         '</div>' +
       '</button>';
-    }).join('') || '<div class="p-3 small text-secondary">No dentists match that search.</div>';
+    }).join('') || '<div class="p-3 small text-secondary">' + esc(t('chat.noMatch')) + '</div>';
   }
 
   function renderChatPanel() {
@@ -1979,16 +2671,18 @@
     if (state.unread[key]) { delete state.unread[key]; save(); renderChatBadge(); }
 
     $('#chatHeader').innerHTML =
-      '<button class="btn btn-sm btn-light d-md-none" data-action="chat-back" aria-label="Back to conversations">' +
+      '<button class="btn btn-sm btn-light d-md-none" data-action="chat-back" aria-label="' + esc(t('chat.backAria')) + '">' +
         '<svg class="ico" aria-hidden="true"><use href="#i-arrow-left"></use></svg></button>' +
-      avatarHtml(doc.name, doc.color, 'avatar-sm') +
+      avatarHtml(doc.name.en, doc.color, 'avatar-sm') +
       '<div class="flex-grow-1">' +
-        '<div class="fw-semibold small" data-testid="chat-header-name">' + esc(doc.name) + '</div>' +
-        '<div class="text-secondary" style="font-size:.72rem">' + esc(doc.title) +
-          ' · <span class="text-success"><svg class="ico" aria-hidden="true" style="font-size:.5rem"><use href="#i-circle-fill"></use></svg> usually replies in a few minutes</span></div>' +
+        '<div class="fw-semibold small" data-testid="chat-header-name">' + esc(docName(doc)) + '</div>' +
+        '<div class="text-secondary" style="font-size:.72rem">' + esc(tv(doc.title)) +
+          ' · <span class="text-success"><svg class="ico" aria-hidden="true" style="font-size:.5rem"><use href="#i-circle-fill"></use></svg> ' +
+          esc(t('chat.repliesSoon')) + '</span></div>' +
       '</div>' +
       '<button class="btn btn-sm btn-outline-primary" data-action="book-dentist" data-id="' + doc.id + '">' +
-        '<svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg><span class="d-none d-lg-inline">Book</span></button>';
+        '<svg class="ico me-1" aria-hidden="true"><use href="#i-calendar-plus"></use></svg>' +
+        '<span class="d-none d-lg-inline">' + esc(t('chat.book')) + '</span></button>';
 
     const msgs = threadMessages(doc.id);
     const log = $('#chatLog');
@@ -1996,19 +2690,19 @@
       ? msgs.map(m =>
           '<div class="bubble-row ' + (m.from === 'me' ? 'me' : 'them') + '" ' +
             'data-testid="chat-message" data-from="' + m.from + '">' +
-            '<div class="bubble-msg">' + esc(m.text) +
+            '<div class="bubble-msg">' + esc(msgText(m)) +
               '<div class="bubble-meta">' + esc(relTime(m.at)) + '</div>' +
             '</div>' +
           '</div>').join('')
       : '<div class="text-center text-secondary py-5">' +
           '<div class="fs-1 opacity-50"><svg class="ico" aria-hidden="true"><use href="#i-chat-square-text"></use></svg></div>' +
-          '<p class="small mb-0">No messages yet. Say hello or pick a question below.</p>' +
+          '<p class="small mb-0">' + esc(t('chat.empty')) + '</p>' +
         '</div>';
 
-    $('#chatQuickReplies').innerHTML = QUICK_REPLIES.map(q =>
+    $('#chatQuickReplies').innerHTML = QUICK_REPLY_KEYS.map(k =>
       '<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" ' +
       'data-testid="chat-quick-reply" data-action="quick-reply">' +
-      esc(q) + '</button>').join('');
+      esc(t(k)) + '</button>').join('');
 
     log.scrollTop = log.scrollHeight;
   }
@@ -2026,6 +2720,8 @@
     const key = threadKey(doc.id);
     if (!key) return;
 
+    // What the patient typed is stored verbatim — only the clinic's own copy
+    // is keyed, so a language switch never rewrites the patient's words.
     state.chats[key] = state.chats[key] || [];
     state.chats[key].push({ from: 'me', text: body, at: new Date().toISOString() });
     save();
@@ -2044,7 +2740,7 @@
     setTimeout(() => {
       const reply = autoReply(body, doc);
       state.chats[key] = state.chats[key] || [];
-      state.chats[key].push({ from: 'them', text: reply, at: new Date().toISOString() });
+      state.chats[key].push({ from: 'them', key: reply.key, vars: reply.vars, at: new Date().toISOString() });
 
       if (activeThread === replyFor && !$('#view-chat').classList.contains('d-none')) {
         save();
@@ -2052,80 +2748,46 @@
       } else {
         state.unread[key] = (state.unread[key] || 0) + 1;
         save();
-        toast(doc.name + ' replied to your message.', 'primary');
+        toast(t('chat.replied', { name: docName(doc) }), 'primary');
       }
       renderChatThreads();
       renderChatBadge();
     }, 1400);
   }
 
+  /**
+   * Picks a reply key from keywords in either language, and returns the key
+   * rather than rendered text so the thread re-reads in whichever language is
+   * active later.
+   */
   function autoReply(text, doc) {
-    const t = text.toLowerCase();
+    const s = text.toLowerCase();
     const first = (currentPatient() || {}).first || 'there';
+    const vars = { first: first, dentist: tv(doc.short) };
+    const match = [
+      ['reply.pain', /(pain|ache|hurt|sore|throb|ปวด|เสียว|เจ็บ)/],
+      ['reply.swelling', /(swell|swollen|abscess|fever|บวม|หนอง|ไข้)/],
+      ['reply.price', /(cost|price|much|fee|quote|expensive|ราคา|เท่าไร|เท่าไหร่|ค่าใช้จ่าย|แพง)/],
+      ['reply.insurance', /(insur|health fund|rebate|medicare|bulk bill|hicaps|ประกัน|เบิก|สิทธิ)/],
+      ['reply.children', /(child|kid|son|daughter|toddler|baby|เด็ก|ลูก|บุตร)/],
+      ['reply.whitening', /(whiten|bright|stain|yellow|ฟอกสี|ฟันขาว|คราบ|เหลือง)/],
+      ['reply.braces', /(brace|align|invisalign|crooked|straight|จัดฟัน|เหล็กจัดฟัน|ฟันเก)/],
+      ['reply.gums', /(bleed|floss|gum|เลือดออก|ไหมขัดฟัน|เหงือก)/],
+      ['reply.reschedule', /(move|reschedul|change|cancel|postpone|เลื่อน|ยกเลิก|เปลี่ยนวัน)/],
+      ['reply.booking', /(book|appoint|available|slot|when can|จอง|นัด|คิว|ว่าง)/],
+      ['reply.wisdom', /(wisdom|extract|pull|remov|ฟันคุด|ถอนฟัน)/],
+      ['reply.implant', /(implant|missing|denture|bridge|รากฟันเทียม|ฟันปลอม|สะพานฟัน|ฟันหาย)/],
+      ['reply.nervous', /(nervous|anxious|scared|afraid|phobia|กลัว|กังวล|ประหม่า)/],
+      ['reply.greeting', /(hello|hi|hey|good morning|good afternoon|thanks|thank you|สวัสดี|ขอบคุณ|หวัดดี)/]
+    ].find(pair => pair[1].test(s));
 
-    if (/(pain|ache|hurt|sore|throb)/.test(t)) {
-      return 'Sorry to hear that, ' + first + '. Rinse with warm salty water and take paracetamol or ibuprofen as directed. ' +
-        'If the pain wakes you at night or you notice swelling, book an emergency slot today and I’ll see you.';
-    }
-    if (/(swell|swollen|abscess|fever)/.test(t)) {
-      return 'Swelling with a fever needs to be seen the same day. Please book an Emergency Dental Care slot, ' +
-        'or call 1800 555 010 and reception will fit you in.';
-    }
-    if (/(cost|price|much|fee|quote|expensive)/.test(t)) {
-      return 'Prices are on the Services page — a check-up and clean is $129, whitening $449, and implants from $3,900. ' +
-        'We give you a written quote before any treatment, and HICAPS claims your health-fund rebate on the spot.';
-    }
-    if (/(insur|health fund|rebate|medicare|bulk bill|hicaps)/.test(t)) {
-      return 'We accept all major health funds through HICAPS, so you only pay the gap. ' +
-        'Children may also be eligible for Medicare CDBS bulk billing — bring your Medicare card along.';
-    }
-    if (/(child|kid|son|daughter|toddler|baby)/.test(t)) {
-      return 'Dr. Nikhil Patel looks after our younger patients and is great with first visits. ' +
-        'Children’s Dentistry appointments run 30 minutes, and eligible families are bulk billed.';
-    }
-    if (/(whiten|bright|stain|yellow)/.test(t)) {
-      return 'In-chair whitening takes about 90 minutes and lifts most patients 4–6 shades. ' +
-        'We check for decay first, since whitening gel on an untreated cavity can be uncomfortable.';
-    }
-    if (/(brace|align|invisalign|crooked|straight)/.test(t)) {
-      return 'Dr. Giulia Rossi runs our orthodontics. The first step is an assessment with a digital scan, ' +
-        'and you’ll see a simulation of the result before committing to braces or clear aligners.';
-    }
-    if (/(bleed|floss|gum)/.test(t)) {
-      return 'A little bleeding when you start flossing is common and usually settles within two weeks. ' +
-        'If it keeps going, that points to gum inflammation and is worth a gum-health check.';
-    }
-    if (/(move|reschedul|change|cancel|postpone)/.test(t)) {
-      return 'No problem — open My Appointments and use Reschedule or Cancel on the booking. ' +
-        'Anything more than 24 hours out is free of charge.';
-    }
-    if (/(book|appoint|available|slot|when can)/.test(t)) {
-      return 'Happy to see you. Tap Book on this conversation and you’ll see my next open times, ' +
-        'or tell me roughly when suits and I’ll suggest something.';
-    }
-    if (/(wisdom|extract|pull|remov)/.test(t)) {
-      return 'Wisdom teeth are Dr. Daniel Okafor’s area. We start with a 3D scan to check the roots and nerve position, ' +
-        'then plan the extraction — sedation is available if you’d prefer.';
-    }
-    if (/(implant|missing|denture|bridge)/.test(t)) {
-      return 'For a missing tooth we’d look at an implant, a bridge or a partial denture. ' +
-        'A consult with a 3D scan tells us which suits your bone and gum health best.';
-    }
-    if (/(nervous|anxious|scared|afraid|phobia)/.test(t)) {
-      return 'That’s more common than you’d think, and it’s nothing to be embarrassed about. ' +
-        'Tell reception when you book and we’ll allow extra time, explain everything first, and stop whenever you raise a hand.';
-    }
-    if (/(hello|hi|hey|good morning|good afternoon|thanks|thank you)/.test(t)) {
-      return 'Hi ' + first + '! ' + doc.name.split(' ')[1] + ' here. What can I help you with today?';
-    }
-    return 'Thanks for the message, ' + first + '. I’ll review it properly before your next visit. ' +
-      'If it’s urgent or painful, book an emergency slot and we’ll take a look today.';
+    return { key: match ? match[0] : 'reply.default', vars: vars };
   }
 
   function openChatWith(dentistId) {
     if (!currentPatient()) {
       pendingRoute = 'chat';
-      showLoginPrompt('Please sign in to message a dentist.');
+      showLoginPrompt(t('login.gateChat'));
       navigate('login');
       return;
     }
@@ -2150,22 +2812,22 @@
     pw2.setCustomValidity('');
     if (state.patients.some(p => p.email.toLowerCase() === email.value.trim().toLowerCase())) {
       email.setCustomValidity('taken');
-      $('#regEmailFeedback').textContent = 'That email is already registered. Try signing in instead.';
+      $('#regEmailFeedback').textContent = t('reg.emailTaken');
     } else {
-      $('#regEmailFeedback').textContent = 'Please enter a valid email address.';
+      $('#regEmailFeedback').textContent = t('reg.emailErr');
     }
     if (pw.value !== pw2.value) {
       pw2.setCustomValidity('mismatch');
-      $('#regPassword2Feedback').textContent = 'Passwords do not match.';
+      $('#regPassword2Feedback').textContent = t('reg.password2Mismatch');
     } else {
-      $('#regPassword2Feedback').textContent = 'Please confirm your password.';
+      $('#regPassword2Feedback').textContent = t('reg.password2Err');
     }
 
     form.classList.add('was-validated');
     if (!form.checkValidity()) {
       const firstBad = form.querySelector(':invalid');
       if (firstBad) firstBad.focus();
-      toast('Please fix the highlighted fields.', 'warning');
+      toast(t('toast.fixFields'), 'warning');
       return;
     }
 
@@ -2192,7 +2854,7 @@
     form.reset();
     form.classList.remove('was-validated');
 
-    toast('Welcome to BrightSmile, ' + patient.first + '!', 'success');
+    toast(t('toast.welcome', { first: patient.first }), 'success');
     const next = pendingRoute || 'appointments';
     pendingRoute = null;
     navigate(next);
@@ -2213,8 +2875,8 @@
     if (!patient) {
       const err = $('#loginError');
       err.textContent = state.patients.some(p => p.email.toLowerCase() === email)
-        ? 'That password does not match our records.'
-        : 'We could not find a patient with that email. Please register first.';
+        ? t('login.wrongPassword')
+        : t('login.noSuchPatient');
       err.classList.remove('d-none');
       return;
     }
@@ -2225,7 +2887,7 @@
     form.classList.remove('was-validated');
     hideLoginPrompt();
 
-    toast('Signed in as ' + patientName(patient) + '.', 'success');
+    toast(t('toast.signedIn', { name: patientName(patient) }), 'success');
     const next = pendingRoute || 'appointments';
     pendingRoute = null;
     navigate(next);
@@ -2236,7 +2898,7 @@
     state.sessionId = null;
     activeThread = null;
     save();
-    toast('You have been signed out.', 'secondary');
+    toast(t('toast.signedOut'), 'secondary');
     navigate('home');
     render('home');
   }
@@ -2248,6 +2910,7 @@
     const visits = mine.filter(a => apptBucket(a) === 'past').length;
     const next = mine.filter(a => apptBucket(a) === 'upcoming')
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))[0];
+    const since = new Date(p.createdAt).toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' });
 
     $('#profileBody').innerHTML =
       '<div class="card border-0 shadow-sm mb-3">' +
@@ -2255,42 +2918,44 @@
           avatarHtml(patientName(p), '#0d7d76', 'avatar-lg') +
           '<div class="flex-grow-1">' +
             '<h5 class="fw-semibold mb-0">' + esc(patientName(p)) + '</h5>' +
-            '<div class="small text-secondary">Patient since ' +
-              esc(new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '</div>' +
+            '<div class="small text-secondary">' + esc(t('profile.since', { date: since })) + '</div>' +
           '</div>' +
           '<div class="text-end small">' +
-            '<div><span class="fw-semibold">' + visits + '</span> <span class="text-secondary">past visits</span></div>' +
-            '<div class="text-secondary">' + (next ? 'Next: ' + esc(fmtShortDate(next.date)) : 'No upcoming visit') + '</div>' +
+            '<div><span class="fw-semibold">' + visits + '</span> <span class="text-secondary">' +
+              esc(t('profile.pastVisits')) + '</span></div>' +
+            '<div class="text-secondary">' +
+              esc(next ? t('profile.next', { date: fmtShortDate(next.date) }) : t('profile.noNext')) + '</div>' +
           '</div>' +
         '</div>' +
       '</div>' +
       '<form class="card border-0 shadow-sm" id="profileForm">' +
         '<div class="card-body">' +
-          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">Contact details</h6>' +
+          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">' + esc(t('profile.contact')) + '</h6>' +
           '<div class="row g-3 mb-4">' +
-            '<div class="col-md-6"><label class="form-label" for="pfPhone">Mobile</label>' +
+            '<div class="col-md-6"><label class="form-label" for="pfPhone">' + esc(t('profile.phone')) + '</label>' +
               '<input class="form-control" id="pfPhone" data-testid="profile-phone" value="' + esc(p.phone) + '" required></div>' +
-            '<div class="col-md-6"><label class="form-label" for="pfEmail">Email</label>' +
+            '<div class="col-md-6"><label class="form-label" for="pfEmail">' + esc(t('profile.email')) + '</label>' +
               '<input type="email" class="form-control" id="pfEmail" value="' + esc(p.email) + '" required></div>' +
-            '<div class="col-12"><label class="form-label" for="pfAddress">Address</label>' +
-              '<input class="form-control" id="pfAddress" value="' + esc(p.address || '') + '"></div>' +
+            '<div class="col-12"><label class="form-label" for="pfAddress">' + esc(t('profile.address')) + '</label>' +
+              '<input class="form-control" id="pfAddress" value="' + esc(fieldText(p, 'address')) + '"></div>' +
           '</div>' +
-          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">Health fund</h6>' +
+          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">' + esc(t('profile.fundSection')) + '</h6>' +
           '<div class="row g-3 mb-4">' +
-            '<div class="col-md-6"><label class="form-label" for="pfInsurer">Fund</label>' +
+            '<div class="col-md-6"><label class="form-label" for="pfInsurer">' + esc(t('profile.fund')) + '</label>' +
               '<input class="form-control" id="pfInsurer" value="' + esc(p.insurer || '') + '"></div>' +
-            '<div class="col-md-6"><label class="form-label" for="pfMember">Membership no.</label>' +
+            '<div class="col-md-6"><label class="form-label" for="pfMember">' + esc(t('profile.member')) + '</label>' +
               '<input class="form-control" id="pfMember" value="' + esc(p.member || '') + '"></div>' +
           '</div>' +
-          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">Medical notes</h6>' +
-          '<textarea class="form-control mb-3" id="pfNotes" rows="3" maxlength="400">' + esc(p.notes || '') + '</textarea>' +
+          '<h6 class="fw-semibold text-uppercase small text-secondary mb-3">' + esc(t('profile.notes')) + '</h6>' +
+          '<textarea class="form-control mb-3" id="pfNotes" rows="3" maxlength="400">' + esc(fieldText(p, 'notes')) + '</textarea>' +
           '<div class="form-check">' +
             '<input class="form-check-input" type="checkbox" id="pfMarketing" ' + (p.marketing ? 'checked' : '') + '>' +
-            '<label class="form-check-label small" for="pfMarketing">Send me check-up reminders and clinic news.</label>' +
+            '<label class="form-check-label small" for="pfMarketing">' + esc(t('reg.marketing')) + '</label>' +
           '</div>' +
         '</div>' +
         '<div class="card-footer bg-white border-top p-3 text-end">' +
-          '<button class="btn btn-primary" type="submit" data-testid="profile-save"><svg class="ico me-1" aria-hidden="true"><use href="#i-save"></use></svg> Save changes</button>' +
+          '<button class="btn btn-primary" type="submit" data-testid="profile-save">' +
+            '<svg class="ico me-1" aria-hidden="true"><use href="#i-save"></use></svg> ' + esc(t('profile.save')) + '</button>' +
         '</div>' +
       '</form>';
 
@@ -2298,14 +2963,17 @@
       ev.preventDefault();
       p.phone = $('#pfPhone').value.trim();
       p.email = $('#pfEmail').value.trim();
+      // Editing a seeded field turns it into the patient's own text.
       p.address = $('#pfAddress').value.trim();
+      delete p.addressKey;
       p.insurer = $('#pfInsurer').value.trim();
       p.member = $('#pfMember').value.trim();
       p.notes = $('#pfNotes').value.trim();
+      delete p.notesKey;
       p.marketing = $('#pfMarketing').checked;
       save();
       renderAuthArea();
-      toast('Profile updated.', 'success');
+      toast(t('toast.profileSaved'), 'success');
     });
   }
 
@@ -2313,6 +2981,9 @@
    * Global event wiring
    * ===================================================================*/
   document.addEventListener('click', function (e) {
+    const langBtn = e.target.closest('[data-lang-option]');
+    if (langBtn) { setLang(langBtn.dataset.langOption); return; }
+
     const routeLink = e.target.closest('[data-route]');
     if (routeLink && routeLink.getAttribute('href')) {
       e.preventDefault();
@@ -2415,14 +3086,16 @@
         $('#loginPassword').value = 'demo1234';
         break;
       case 'reset-demo':
-        if (confirm('Reset the prototype back to its demo data? Anything you registered or booked here will be cleared.')) {
+        if (confirm(t('footer.resetConfirm'))) {
+          const lang = state.lang;
           state = seedState();
+          state.lang = lang;            // the reset clears data, not the language
           save();
           activeThread = null;
           resetBooking();
           navigate('home');
           render('home');
-          toast('Demo data reset.', 'secondary');
+          toast(t('toast.demoReset'), 'secondary');
         }
         break;
     }
@@ -2463,7 +3136,11 @@
   /* Boot --------------------------------------------------------------*/
   $('#regDob').max = iso(new Date());       // no future dates of birth
   $('#regDob').min = '1900-01-01';
+  applyLang();
   render(location.hash.replace('#/', '') || 'home');
+
+  // Exposed for the e2e suite, which checks that no key is missing a language.
+  window.__i18n = { strings: STRINGS, services: SERVICES, dentists: DENTISTS };
 })();
 </script>
 </body>
