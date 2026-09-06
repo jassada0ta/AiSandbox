@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Calls the SandboxApi GraphQL endpoint from a prototype page. Demonstrates the subfolder grouping too."
+    />
+    <link rel="stylesheet" href="/prototype.css" />
+    <title>API fetch</title>
+  </head>
+  <body>
+    <div class="prototype-shell">
+      <a class="prototype-back" href="/">&larr; All prototypes</a>
+      <h1>API fetch</h1>
+      <p>
+        This page lives in <code>prototypes/examples/</code>, so the entry page
+        files it under an <em>examples</em> heading.
+      </p>
+
+      <div class="panel">
+        <h2>SandboxApi GraphQL</h2>
+        <p>
+          <label for="endpoint">Endpoint</label><br />
+          <input id="endpoint" value="http://localhost:1337/graphql" size="40" />
+          <button id="probe" type="button">Probe</button>
+        </p>
+        <pre id="output">Not run yet.</pre>
+      </div>
+    </div>
+
+    <script type="module">
+      const output = document.querySelector('#output')
+
+      document.querySelector('#probe').addEventListener('click', async () => {
+        const endpoint = document.querySelector('#endpoint').value.trim()
+        output.textContent = 'Probing…'
+
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: '{ __schema { queryType { name } } }',
+            }),
+          })
+
+          const body = await response.json()
+          output.textContent = JSON.stringify(body, null, 2)
+        } catch (error) {
+          output.textContent = `Failed: ${error.message}\n\nIs SandboxApi running? npm run dev:api`
+        }
+      })
+    </script>
+  </body>
+</html>

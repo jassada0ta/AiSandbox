@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="How prototype pages work and what the entry page reads from them."
+    />
+    <link rel="stylesheet" href="/prototype.css" />
+    <title>Welcome</title>
+  </head>
+  <body>
+    <div class="prototype-shell">
+      <a class="prototype-back" href="/">&larr; All prototypes</a>
+      <h1>Welcome</h1>
+      <p>
+        This is a prototype page. It is a plain HTML file in
+        <code>prototypes/</code> — nothing registered it, the entry page found it
+        by scanning the folder.
+      </p>
+
+      <div class="panel">
+        <h2>What the index reads</h2>
+        <ul>
+          <li>The link text comes from <code>&lt;title&gt;</code>.</li>
+          <li>
+            The blurb comes from
+            <code>&lt;meta name="description"&gt;</code>.
+          </li>
+          <li>A subfolder becomes a group heading.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>Adding your own</h2>
+        <p>
+          Copy this file, rename it, and edit away. Vite serves it with hot
+          reload during <code>npm run dev:proto</code> and emits it as its own
+          page on build.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
