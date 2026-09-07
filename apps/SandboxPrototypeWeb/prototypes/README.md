@@ -39,6 +39,17 @@ environments have no guaranteed outbound access, and a prototype that only
 renders on a good network is not much use in a review. `proto-marketplace.html`
 is the worked example.
 
+Phaser 4.2.1 is vendored the same way, for prototypes that need a game loop or
+a canvas renderer:
+
+```html
+<script src="/vendor/phaser-4.2.1/phaser.min.js"></script>
+```
+
+If a prototype is asked for with CDN links, keep them — but fall back to the
+vendored copy so the page still renders offline and in CI.
+`my-city-building-game-proto.html` shows both halves of that pattern.
+
 A framework-styled page owns its whole layout, so skip `/prototype.css` when
 you use one — its body padding and colour tokens fight Bootstrap's reboot. Keep
 the back link.
