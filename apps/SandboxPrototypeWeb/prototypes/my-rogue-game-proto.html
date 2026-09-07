@@ -1,0 +1,2302 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<meta name="description"
+      content="Don't Starve flavoured isometric survival prototype: Phaser 4 on a 256x256 grassland/badland tile map, Wilson controlled by keyboard or an on-screen virtual joystick, eggs spawning every 30s within 16 tiles, and a hunger meter that drains 1 point per 30s.">
+<title>My Rogue Game</title>
+
+<!--
+  ============================================================================
+  My Rogue Game - isometric survival prototype
+  ============================================================================
+
+  Everything lives in this one file, on purpose: the art is painted into
+  canvases at boot (no image assets), the world is generated from a seeded
+  value-noise function, and the HUD/joystick are plain DOM layered over the
+  Phaser canvas.
+
+  Third-party code comes from CDNs, as requested for this prototype:
+    - Phaser 4    -> game engine
+    - Bootstrap 5.3 (CSS only) -> HUD styling
+    - Google Fonts (Griffy) -> hand-lettered chrome
+
+  Note that the rest of `prototypes/` vendors Bootstrap from `public/vendor/`
+  so those pages render with no network. This page deliberately uses the CDN,
+  so it needs outbound access; if Phaser cannot be fetched the page shows an
+  explicit offline notice instead of a blank canvas.
+
+  Spec covered here:
+    - vanilla JS + HTML + CSS, single self-contained file
+    - Phaser 4 (CDN) as the engine, Bootstrap 5.3 (CDN) for styling
+    - Don't Starve styled interface (woodcut palette, vignette, ink outlines)
+    - keyboard movement (WASD + arrows) and a touch virtual joystick
+    - isometric tile map, 256 x 256 tiles, grassland + badland
+    - an egg spawns every 30s on a random walkable tile within 16 tiles
+    - hunger starts at 100, caps at 100, drains 1 point per 30s
+    - hunger shown as "current / max" numbers in the top-left corner
+    - eating an egg restores 5 hunger points
+
+  Layout of the script below:
+    1. constants
+    2. seeded noise + world generation
+    3. procedural textures (tiles, decor, Wilson, egg)
+    4. DOM controllers (HUD, virtual joystick, overlays)
+    5. the Phaser scene
+    6. boot
+-->
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Griffy&display=swap" rel="stylesheet">
+
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    --ink: #17120c;
+    --parchment: #e8d9b5;
+    --parchment-dim: #c3b28c;
+    --wood: #2a1f14;
+    --wood-light: #3d2d1d;
+    --blood: #8e2f28;
+    --gold: #d8b45a;
+    --hand: 'Griffy', 'Papyrus', Georgia, serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: #100d09;
+    color: var(--parchment);
+    font-family: var(--hand);
+    /* the whole page is a game surface: no scroll-bounce, no double-tap zoom */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* ------------------------------------------------------------ game canvas */
+  #game-root {
+    position: fixed;
+    inset: 0;
+    background: #16120c;
+  }
+  #game-root canvas { display: block; }
+
+  /* Don't Starve's heavy corner darkening. Sits above the canvas, below HUD. */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    /* Two stacked gradients: a hard corner falloff plus a wide dim, which is
+       what gives Don't Starve its "lit clearing in a dark world" feel. */
+    background:
+      radial-gradient(86% 68% at 50% 46%, rgba(0,0,0,0) 42%, rgba(9,7,4,.5) 78%, rgba(4,3,2,.86) 100%),
+      radial-gradient(120% 100% at 50% 46%, rgba(0,0,0,0) 24%, rgba(14,10,6,.26) 100%);
+    transition: background .6s ease;
+  }
+  body[data-starving='true'] #vignette {
+    background:
+      radial-gradient(70% 56% at 50% 46%, rgba(0,0,0,0) 22%, rgba(52,9,6,.6) 68%, rgba(8,2,1,.97) 100%),
+      radial-gradient(120% 100% at 50% 46%, rgba(0,0,0,0) 12%, rgba(30,4,3,.45) 100%);
+  }
+
+  /* -------------------------------------------------------------------- HUD */
+  .hud-layer {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    padding: max(.6rem, env(safe-area-inset-top)) max(.6rem, env(safe-area-inset-right))
+             max(.6rem, env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left));
+  }
+  .hud-layer > * { pointer-events: auto; }
+  .hud-tl { top: 0; left: 0; }
+  .hud-tr { top: 0; right: 0; text-align: right; }
+  .hud-br { bottom: 0; right: 0; }
+  .hud-bl { bottom: 0; left: 0; }
+
+  /* A carved wooden plaque - the recurring Don't Starve UI shape. */
+  .plaque {
+    background: linear-gradient(#3a2b1c, #241a10);
+    border: 3px solid #0d0a06;
+    border-radius: .55rem;
+    box-shadow: inset 0 0 0 2px rgba(216,180,90,.22), 0 6px 14px rgba(0,0,0,.55);
+    color: var(--parchment);
+    padding: .5rem .7rem;
+  }
+  .plaque--tight { padding: .35rem .55rem; }
+
+  .stat-label {
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    font-family: system-ui, sans-serif;
+  }
+
+  /* Hunger read-out. The numbers are the spec'd display; the bar is flavour. */
+  .hunger-row { display: flex; align-items: center; gap: .55rem; }
+  .hunger-icon { width: 34px; height: 34px; flex: 0 0 auto; filter: drop-shadow(0 1px 0 #0c0906); }
+  .hunger-figures {
+    font-family: var(--hand);
+    font-size: 1.65rem;
+    line-height: 1;
+    color: #f4e7c4;
+    text-shadow: 0 2px 0 #0d0a06;
+    white-space: nowrap;
+  }
+  .hunger-figures .sep { color: var(--parchment-dim); font-size: 1.05rem; margin: 0 .1rem; }
+  .hunger-figures .max { color: var(--parchment-dim); font-size: 1.15rem; }
+
+  .hunger-track {
+    height: 9px;
+    margin-top: .4rem;
+    border: 2px solid #0d0a06;
+    border-radius: 99px;
+    background: #1b1409;
+    overflow: hidden;
+  }
+  .hunger-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(#e0a63f, #b76b22);
+    transition: width .35s ease, background .35s ease;
+  }
+  body[data-starving='true'] .hunger-fill { background: linear-gradient(#c4352b, #7d1a14); }
+  body[data-starving='true'] .hunger-figures { color: #ff9f92; animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  /* Egg tracker (top-right) */
+  .egg-line { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; }
+  .egg-count { font-size: 1.3rem; line-height: 1; color: #f4e7c4; text-shadow: 0 2px 0 #0d0a06; }
+  .compass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    color: var(--gold);
+  }
+  .compass svg { width: 100%; height: 100%; transition: transform .12s linear; }
+  .timers {
+    font-family: system-ui, sans-serif;
+    font-size: .68rem;
+    color: var(--parchment-dim);
+    letter-spacing: .04em;
+  }
+
+  /* Buttons */
+  .btn-carved {
+    --bs-btn-color: #efe0bd;
+    --bs-btn-bg: #3a2b1c;
+    --bs-btn-border-color: #0d0a06;
+    --bs-btn-hover-color: #fff4d8;
+    --bs-btn-hover-bg: #4a3722;
+    --bs-btn-hover-border-color: #0d0a06;
+    --bs-btn-active-bg: #241a10;
+    --bs-btn-active-border-color: #0d0a06;
+    --bs-btn-focus-shadow-rgb: 216,180,90;
+    border-width: 3px;
+    font-family: var(--hand);
+    box-shadow: inset 0 0 0 2px rgba(216,180,90,.2);
+  }
+  .btn-carved[aria-pressed='true'] {
+    --bs-btn-bg: #6b3d1c;
+    box-shadow: inset 0 0 0 2px rgba(216,180,90,.5);
+  }
+
+  .prototype-back {
+    display: inline-block;
+    font-size: .78rem;
+    font-family: system-ui, sans-serif;
+    color: #d8b45a;
+    text-decoration: none;
+    background: rgba(13,10,6,.72);
+    border: 1px solid rgba(216,180,90,.35);
+    border-radius: .4rem;
+    padding: .2rem .5rem;
+  }
+  .prototype-back:hover { color: #ffe9a8; text-decoration: underline; }
+
+  /* ------------------------------------------------------- virtual joystick */
+  #joystick {
+    position: fixed;
+    z-index: 20;
+    left: max(1rem, env(safe-area-inset-left));
+    bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 2.6rem);
+    width: 148px;
+    height: 148px;
+    touch-action: none;
+    display: none;
+  }
+  #joystick[data-visible='true'] { display: block; }
+  #joy-base {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid #0d0a06;
+    background:
+      radial-gradient(circle at 50% 42%, rgba(232,217,181,.16), rgba(13,10,6,.5) 70%);
+    box-shadow: inset 0 0 0 2px rgba(216,180,90,.28), 0 6px 18px rgba(0,0,0,.5);
+    opacity: .82;
+    transition: opacity .2s ease;
+  }
+  #joystick[data-active='true'] #joy-base { opacity: 1; }
+  #joy-knob {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 62px; height: 62px;
+    margin: -31px 0 0 -31px;
+    border-radius: 50%;
+    border: 3px solid #0d0a06;
+    background: linear-gradient(#c8ab72, #7d6234);
+    box-shadow: inset 0 2px 0 rgba(255,240,200,.4), 0 4px 10px rgba(0,0,0,.6);
+    pointer-events: none;
+    transition: transform .06s linear;
+  }
+  #joystick[data-active='true'] #joy-knob { transition: none; }
+  .joy-hint {
+    position: absolute;
+    left: 50%;
+    bottom: -1.5rem;
+    transform: translateX(-50%);
+    font-size: .7rem;
+    font-family: system-ui, sans-serif;
+    color: var(--parchment-dim);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ---------------------------------------------------------------- overlays */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: radial-gradient(120% 100% at 50% 40%, rgba(20,15,9,.72), rgba(6,5,3,.95));
+    backdrop-filter: blur(2px);
+    /* The backdrop dims but does not swallow clicks, so the "All prototypes"
+       link stays reachable while a card is up - including the offline notice,
+       which is what tests/prototype/index.spec.js clicks through. */
+    pointer-events: none;
+  }
+  .overlay[hidden] { display: none; }
+  .scroll-card {
+    pointer-events: auto;
+    max-width: 34rem;
+    width: 100%;
+    background: linear-gradient(#e8d9b5, #d3c19a);
+    color: #2a2013;
+    border: 4px solid #17120c;
+    border-radius: .6rem;
+    box-shadow: 0 18px 45px rgba(0,0,0,.6), inset 0 0 0 2px rgba(255,255,255,.25);
+    padding: 1.4rem 1.5rem;
+    max-height: calc(100dvh - 2rem);
+    overflow: auto;
+  }
+  .scroll-card h2 {
+    font-family: var(--hand);
+    font-size: 2.1rem;
+    margin: 0 0 .1rem;
+    color: #2a2013;
+  }
+  .scroll-card .tagline {
+    font-family: system-ui, sans-serif;
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .18em;
+    color: #6a5432;
+    margin-bottom: 1rem;
+  }
+  .scroll-card dl { margin: 0; }
+  .scroll-card dt {
+    font-family: system-ui, sans-serif;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #6a5432;
+  }
+  .scroll-card dd { margin: 0 0 .7rem; font-size: 1rem; }
+  .keycap {
+    display: inline-block;
+    min-width: 1.7rem;
+    text-align: center;
+    font-family: system-ui, sans-serif;
+    font-size: .78rem;
+    padding: .1rem .35rem;
+    margin-right: .15rem;
+    border: 2px solid #2a2013;
+    border-bottom-width: 3px;
+    border-radius: .3rem;
+    background: #f4ead0;
+  }
+  .btn-play {
+    --bs-btn-color: #fff2d6;
+    --bs-btn-bg: #8e2f28;
+    --bs-btn-border-color: #17120c;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #a2382f;
+    --bs-btn-hover-border-color: #17120c;
+    --bs-btn-active-bg: #7a251f;
+    border-width: 3px;
+    font-family: var(--hand);
+    font-size: 1.3rem;
+  }
+
+  /* Small screens: shrink the chrome so the world keeps the space. */
+  @media (max-width: 575.98px) {
+    .hunger-figures { font-size: 1.35rem; }
+    .hunger-icon { width: 28px; height: 28px; }
+    #joystick { width: 126px; height: 126px; }
+    #joy-knob { width: 54px; height: 54px; margin: -27px 0 0 -27px; }
+    .timers { display: none; }
+  }
+</style>
+</head>
+<body data-touch="false" data-starving="false">
+
+<!-- The index reads the <title>; this heading keeps the page accessible and
+     satisfies tests/prototype/index.spec.js, which compares h1 to the title. -->
+<h1 class="visually-hidden">My Rogue Game</h1>
+
+<!-- Phaser draws here. -->
+<div id="game-root" data-testid="game-root" data-game-state="loading"></div>
+<div id="vignette"></div>
+
+<!-- ============================== HUD: hunger ============================= -->
+<div class="hud-layer hud-tl">
+  <div class="plaque" id="hunger-plaque" data-testid="hunger-meter" data-hunger="100" data-hunger-max="100">
+    <div class="stat-label">Hunger</div>
+    <div class="hunger-row">
+      <!-- inline SVG so the HUD needs no icon font -->
+      <svg class="hunger-icon" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M16 4c5 0 9 3.6 9 9.5 0 5.4-3 8.4-3 12.1 0 1.6-1.3 2.4-3 2.4h-6c-1.7 0-3-.8-3-2.4 0-3.7-3-6.7-3-12.1C7 7.6 11 4 16 4z"
+              fill="#c9822f" stroke="#17120c" stroke-width="2.2" stroke-linejoin="round"/>
+        <path d="M12.5 10.5c1.8-1.2 5.2-1.2 7 0" fill="none" stroke="#17120c" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="13" cy="17.5" r="1.6" fill="#17120c"/>
+        <circle cx="19.5" cy="19" r="1.3" fill="#17120c"/>
+      </svg>
+      <div class="hunger-figures">
+        <span data-testid="hunger-value">100</span><span class="sep">/</span><span class="max" data-testid="hunger-max">100</span>
+      </div>
+    </div>
+    <div class="hunger-track" role="img" aria-label="Hunger">
+      <div class="hunger-fill" id="hunger-fill"></div>
+    </div>
+  </div>
+  <div class="mt-2">
+    <a class="prototype-back" href="/">&larr; All prototypes</a>
+  </div>
+</div>
+
+<!-- ========================= HUD: eggs + next tick ======================== -->
+<div class="hud-layer hud-tr">
+  <div class="plaque plaque--tight" data-testid="egg-tracker" data-eggs-eaten="0" data-eggs-on-map="0">
+    <div class="egg-line">
+      <svg viewBox="0 0 20 26" width="17" height="22" aria-hidden="true">
+        <ellipse cx="10" cy="15" rx="8.2" ry="10" fill="#efe3ca" stroke="#17120c" stroke-width="2"/>
+        <circle cx="7" cy="12" r="1.1" fill="#8a6a4a"/>
+        <circle cx="12" cy="17" r="1.3" fill="#8a6a4a"/>
+      </svg>
+      <span class="egg-count" data-testid="eggs-eaten">0</span>
+      <span class="compass" id="egg-compass" title="Nearest egg" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2.5l4.2 9.8-4.2-2.3-4.2 2.3z" fill="currentColor" stroke="#17120c" stroke-width="1.6" stroke-linejoin="round"/>
+          <circle cx="12" cy="17.5" r="2.1" fill="none" stroke="currentColor" stroke-width="1.8"/>
+        </svg>
+      </span>
+    </div>
+    <div class="timers">
+      egg in <span id="t-egg">30</span>s &middot; hunger in <span id="t-hunger">30</span>s
+    </div>
+  </div>
+</div>
+
+<!-- ============================= HUD: buttons ============================= -->
+<div class="hud-layer hud-br">
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-sm btn-carved" id="btn-joystick"
+            aria-pressed="false" data-testid="toggle-joystick">Joystick</button>
+    <button type="button" class="btn btn-sm btn-carved" id="btn-help" data-testid="open-help">?</button>
+  </div>
+</div>
+
+<!-- =========================== virtual joystick =========================== -->
+<div id="joystick" data-testid="virtual-joystick" data-visible="false" data-active="false"
+     data-x="0" data-y="0">
+  <div id="joy-base" role="application" aria-label="Movement joystick"></div>
+  <div id="joy-knob"></div>
+  <span class="joy-hint">drag to walk</span>
+</div>
+
+<!-- ============================ title / help ============================== -->
+<div class="overlay" id="overlay-title" data-testid="title-overlay">
+  <div class="scroll-card">
+    <h2>My Rogue Game</h2>
+    <p class="tagline">Say, that's not food.</p>
+    <p class="mb-3">
+      You are Wilson, dropped somewhere in a 256&times;256 tile wilderness of
+      grassland and badland. Eggs appear near you every 30 seconds. Eat them,
+      or your hunger runs out.
+    </p>
+    <dl>
+      <dt>Walk</dt>
+      <dd>
+        <span class="keycap">W</span><span class="keycap">A</span><span class="keycap">S</span><span class="keycap">D</span>
+        or the arrow keys &mdash; on a touch screen, drag the joystick in the
+        bottom-left corner.
+      </dd>
+      <dt>Hunger</dt>
+      <dd>Starts at 100, caps at 100, drops 1 point every 30 seconds.</dd>
+      <dt>Eggs</dt>
+      <dd>One spawns every 30 seconds within 16 tiles of you. Walk over it to eat it: +5 hunger.</dd>
+    </dl>
+    <div class="d-grid mt-3">
+      <button type="button" class="btn btn-play" id="btn-play" data-testid="start-game">Wake up</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-help" data-testid="help-overlay" hidden>
+  <div class="scroll-card">
+    <h2>Field notes</h2>
+    <p class="tagline">Prototype controls &amp; rules</p>
+    <dl>
+      <dt>Movement</dt>
+      <dd><span class="keycap">W</span><span class="keycap">A</span><span class="keycap">S</span><span class="keycap">D</span>
+        / arrow keys, or the on-screen joystick. Trees, boulders and dead trees block you.</dd>
+      <dt>Hunger</dt>
+      <dd>100 at the start, hard cap of 100, &minus;1 every 30 seconds. At 0 you keep
+        walking, but slowly, and the world closes in.</dd>
+      <dt>Eggs</dt>
+      <dd>+5 hunger each. A new one appears every 30 seconds on a walkable tile
+        3&ndash;16 tiles away. The arrow next to the egg count points at the closest one.</dd>
+      <dt>The map</dt>
+      <dd>256 &times; 256 isometric tiles, generated from seeded noise: green
+        grassland, dry fringes, dusty badland and rocky flats.</dd>
+    </dl>
+    <div class="d-flex gap-2 mt-3">
+      <button type="button" class="btn btn-play flex-grow-1" id="btn-help-close">Back to it</button>
+      <button type="button" class="btn btn-carved" id="btn-restart" title="Reload with a fresh world">New world</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-error" hidden>
+  <div class="scroll-card">
+    <h2>No engine</h2>
+    <p class="tagline">Phaser could not be loaded</p>
+    <p class="mb-0">
+      This prototype pulls Phaser 4 and Bootstrap 5.3 from a CDN, so it needs
+      outbound network access. Reload once you are online.
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js"></script>
+<script>
+(function main() {
+'use strict';
+
+/*
+  Phaser comes from a CDN, so it can be missing. Bail out here rather than
+  further down: `class WildernessScene extends Phaser.Scene` is evaluated while
+  the script runs, so without this the script would throw at that line and no
+  later handler would ever get to show the notice.
+*/
+if (typeof Phaser === 'undefined') {
+  document.getElementById('overlay-title').hidden = true;
+  document.getElementById('overlay-error').hidden = false;
+  document.getElementById('game-root').dataset.gameState = 'error';
+  return;
+}
+
+/* ==========================================================================
+   1. Constants
+   ========================================================================== */
+
+const TILE_W = 64;                 // isometric diamond width in px
+const TILE_H = 32;                 // isometric diamond height in px
+const HALF_W = TILE_W / 2;
+const HALF_H = TILE_H / 2;
+
+const MAP_SIZE = 256;              // tiles per side, as specified
+const MAP_EDGE = 2;                // tiles of the rim the player cannot enter
+
+const HUNGER_MAX = 100;            // cap
+const HUNGER_START = 100;
+const HUNGER_TICK_MS = 30000;      // -1 hunger every 30s
+const HUNGER_PER_EGG = 5;          // +5 hunger per egg
+
+const EGG_SPAWN_MS = 30000;        // a new egg every 30s
+const EGG_RADIUS_TILES = 16;       // ...within 16 tiles of the player
+const EGG_MIN_TILES = 3;           // ...but not right on top of him
+const EGG_PICKUP_TILES = 0.85;     // walk this close to eat it
+const EGG_LIMIT = 60;              // prototype guard: cap live eggs, drop the farthest
+
+const WALK_SPEED = 176;            // px/s along the screen X axis
+const STARVING_SPEED = 0.55;       // speed multiplier at 0 hunger
+
+const MAP_CENTRE = MAP_SIZE / 2;   // the search origin for Wilson's spawn tile
+const CLEARING_RADIUS = 3;         // tiles kept prop-free around the spawn point
+
+const INK = '#17120c';             // the outline colour everything shares
+const TAU = Math.PI * 2;
+
+/* Decor kinds. Index 0 means "empty tile"; the pool swaps textures by name. */
+const DECOR = [
+  null,
+  { key: 'tree',     solid: true  },
+  { key: 'bush',     solid: false },
+  { key: 'rock',     solid: true  },
+  { key: 'sapling',  solid: false },
+  { key: 'tuft',     solid: false },
+  { key: 'flower',   solid: false },
+  { key: 'deadtree', solid: true  },
+  { key: 'bones',    solid: false },
+  { key: 'twigs',    solid: false },
+  { key: 'pebbles',  solid: false },
+];
+
+/* Terrain codes -> the tile texture family they draw from. */
+const TERRAIN = ['grass', 'dry', 'badland', 'rocky'];
+const TILE_VARIANTS = 6;
+
+/* ==========================================================================
+   2. Seeded noise and world generation
+   ========================================================================== */
+
+/** Deterministic 32-bit hash of two integers, returned as a 0..1 float. */
+function hash2(x, y, seed) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed | 0, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+/** Small seeded PRNG, used while painting textures so each variant is stable. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function random() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const smoothstep = (t) => t * t * (3 - 2 * t);
+
+/** A neutral multiply tint between `floor` and full brightness. */
+function shadeTint(t, floor) {
+  const level = Math.round((floor + t * (1 - floor)) * 255);
+  return (level << 16) | (level << 8) | level;
+}
+
+/** Bilinear value noise on the integer lattice. */
+function valueNoise(x, y, seed) {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = smoothstep(x - xi);
+  const yf = smoothstep(y - yi);
+
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+
+  const top = a + (b - a) * xf;
+  const bottom = c + (d - c) * xf;
+
+  return top + (bottom - top) * yf;
+}
+
+/** Four octaves of value noise, normalised to 0..1. */
+function fbm(x, y, seed) {
+  let sum = 0;
+  let norm = 0;
+  let amp = 1;
+  let freq = 1;
+
+  for (let octave = 0; octave < 4; octave += 1) {
+    sum += valueNoise(x * freq, y * freq, seed + octave * 1013) * amp;
+    norm += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+
+  return sum / norm;
+}
+
+/**
+ * Builds the whole 256 x 256 map up front. Two flat typed arrays (64 KB each)
+ * are cheaper and simpler than lazy chunking, and generation takes a few tens
+ * of milliseconds.
+ */
+function generateWorld(seed) {
+  const terrain = new Uint8Array(MAP_SIZE * MAP_SIZE);
+  const decor = new Uint8Array(MAP_SIZE * MAP_SIZE);
+
+  // Pass 1: the biome field. The band just below the badland threshold becomes
+  // "dry grass", which reads as a natural fringe with no neighbour lookups.
+  for (let ty = 0; ty < MAP_SIZE; ty += 1) {
+    for (let tx = 0; tx < MAP_SIZE; tx += 1) {
+      const n = fbm(tx * 0.022, ty * 0.022, seed);
+      let code;
+      if (n > 0.715) code = 3;        // rocky flats, the heart of the badland
+      else if (n > 0.575) code = 2;   // badland
+      else if (n > 0.53) code = 1;    // dry grass fringe
+      else code = 0;                  // grassland
+
+      terrain[ty * MAP_SIZE + tx] = code;
+    }
+  }
+
+  // Wilson wakes up on grass, not in the middle of a rock field: walk outwards
+  // in rings from the map centre until a green tile turns up.
+  const spawn = { tx: MAP_CENTRE, ty: MAP_CENTRE };
+  outer:
+  for (let ring = 0; ring < MAP_SIZE / 2; ring += 1) {
+    for (let dy = -ring; dy <= ring; dy += 1) {
+      for (let dx = -ring; dx <= ring; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;   // ring edge only
+        const tx = MAP_CENTRE + dx;
+        const ty = MAP_CENTRE + dy;
+        if (terrain[ty * MAP_SIZE + tx] === 0) {
+          spawn.tx = tx;
+          spawn.ty = ty;
+          break outer;
+        }
+      }
+    }
+  }
+
+  // Pass 2: sparse, biome specific props.
+  for (let ty = 0; ty < MAP_SIZE; ty += 1) {
+    for (let tx = 0; tx < MAP_SIZE; tx += 1) {
+      const index = ty * MAP_SIZE + tx;
+      const code = terrain[index];
+      const roll = hash2(tx, ty, seed + 7777);
+      let kind = 0;
+
+      if (code <= 1) {
+        if (roll < 0.042) kind = 1;        // tree
+        else if (roll < 0.058) kind = 2;   // berry bush
+        else if (roll < 0.070) kind = 3;   // boulder
+        else if (roll < 0.088) kind = 4;   // sapling
+        else if (roll < 0.200) kind = 5;   // grass tuft
+        else if (roll < 0.222) kind = 6;   // flower
+      } else {
+        if (roll < 0.016) kind = 7;        // dead tree
+        else if (roll < 0.042) kind = 3;   // boulder
+        else if (roll < 0.054) kind = 8;   // bones
+        else if (roll < 0.078) kind = 9;   // twigs
+        else if (roll < 0.140) kind = 10;  // pebbles
+      }
+
+      // Keep the spawn point walkable and legible.
+      if (Math.abs(tx - spawn.tx) <= CLEARING_RADIUS &&
+          Math.abs(ty - spawn.ty) <= CLEARING_RADIUS) {
+        kind = 0;
+      }
+
+      decor[index] = kind;
+    }
+  }
+
+  return { seed, terrain, decor, spawn };
+}
+
+/* --------------------------------- iso maths ------------------------------ */
+
+/** Tile centre, in world (screen) pixels. */
+const tileToWorldX = (tx, ty) => (tx - ty) * HALF_W;
+const tileToWorldY = (tx, ty) => (tx + ty) * HALF_H;
+
+/**
+ * The screen diamond of tile (i, j) is the affine image of the unit square
+ * [i-.5, i+.5] x [j-.5, j+.5], so independently rounding both axes gives the
+ * containing tile exactly.
+ */
+function worldToTileX(x, y) { return (x / HALF_W + y / HALF_H) / 2; }
+function worldToTileY(x, y) { return (y / HALF_H - x / HALF_W) / 2; }
+
+/* ==========================================================================
+   3. Procedural textures
+   ========================================================================== */
+
+function makeCanvas(width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+/** Paints `draw` into a fresh canvas and registers it as a Phaser texture. */
+function addTexture(scene, key, width, height, draw) {
+  const canvas = makeCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  draw(ctx);
+  scene.textures.addCanvas(key, canvas);
+}
+
+/**
+ * Paints a set of same-sized frames into one canvas and registers named frames
+ * over it, so everything in a layer shares a single texture. That matters: a
+ * screenful is well over a thousand ground tiles, and one texture means the
+ * renderer can push them all in a single batch instead of switching per tile.
+ *
+ * Each cell is drawn clipped and separated by a 2px gutter, so bilinear
+ * sampling at a frame edge cannot pull in a neighbouring frame's pixels.
+ */
+function addAtlas(scene, key, frameW, frameH, names, drawFrame) {
+  const gutter = 2;
+  const cellW = frameW + gutter * 2;
+  const cellH = frameH + gutter * 2;
+  const cols = Math.ceil(Math.sqrt(names.length));
+  const rows = Math.ceil(names.length / cols);
+
+  const canvas = makeCanvas(cols * cellW, rows * cellH);
+  const ctx = canvas.getContext('2d');
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  const placed = names.map((name, index) => {
+    const x = (index % cols) * cellW + gutter;
+    const y = Math.floor(index / cols) * cellH + gutter;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    ctx.rect(0, 0, frameW, frameH);
+    ctx.clip();
+    drawFrame(ctx, name, index);
+    ctx.restore();
+
+    return { name, x, y };
+  });
+
+  const texture = scene.textures.addCanvas(key, canvas);
+  placed.forEach(({ name, x, y }) => texture.add(name, 0, x, y, frameW, frameH));
+  return texture;
+}
+
+/** fill + ink outline, the woodcut look everything here shares. */
+function paint(ctx, fill, lineWidth = 3, stroke = INK) {
+  if (fill) {
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (stroke && lineWidth > 0) {
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
+}
+
+/** Soft contact shadow at a prop's ground anchor. */
+function groundShadow(ctx, ax, ay, rx, ry, alpha = 0.22) {
+  ctx.beginPath();
+  ctx.ellipse(ax, ay - 2, rx, ry, 0, 0, TAU);
+  ctx.fillStyle = `rgba(12,9,5,${alpha})`;
+  ctx.fill();
+}
+
+/**
+ * A cluster of overlapping circles with one continuous ink outline: stroke
+ * every circle fat first, then fill each on top. Putting several arcs in a
+ * single path would instead stroke the connecting lines between them.
+ */
+function blobCircles(ctx, circles, fill, lineWidth = 3) {
+  ctx.lineWidth = lineWidth * 2;
+  ctx.strokeStyle = INK;
+  circles.forEach(([x, y, r]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = fill;
+  circles.forEach(([x, y, r]) => {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+  });
+}
+
+/* ------------------------------- ground tiles ----------------------------- */
+
+/*
+  Tiles are painted 2px larger than the diamond they represent and drawn from
+  their centre, so neighbours overlap by a pixel. Without that, antialiased
+  diamond edges leave a visible seam grid across the whole map.
+*/
+const TILE_TEX_W = TILE_W + 4;
+const TILE_TEX_H = TILE_H + 4;
+
+/*
+  The palettes are deliberately low-contrast within a family. Strong mottling
+  inside a diamond tiles across the whole map and the eye reads it as a
+  crosshatch grid; the variation that actually helps is *between* tiles, which
+  is why there are six variants per family and a per-tile tint on top.
+*/
+const TILE_PALETTES = {
+  grass: {
+    base: '#4b6134',
+    blotches: ['#526939', '#445830'],
+    speck: ['#617745', '#3a4b28'],
+    cracks: 0,
+  },
+  dry: {
+    base: '#5f6238',
+    blotches: ['#666a3d', '#575934'],
+    speck: ['#767748', '#454628'],
+    cracks: 1,
+  },
+  badland: {
+    base: '#7a5f41',
+    blotches: ['#816648', '#71573b'],
+    speck: ['#8f7455', '#63492f'],
+    cracks: 2,
+  },
+  rocky: {
+    base: '#6e6047',
+    blotches: ['#756748', '#655741'],
+    speck: ['#847660', '#584c39'],
+    cracks: 2,
+  },
+};
+
+function drawGroundTile(ctx, palette, seed) {
+  const random = mulberry32(seed);
+  const cx = TILE_TEX_W / 2;
+  const cy = TILE_TEX_H / 2;
+  const hw = HALF_W + 1;
+  const hh = HALF_H + 1;
+
+  ctx.save();
+
+  // Clip to the (slightly inflated) diamond.
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hh);
+  ctx.lineTo(cx + hw, cy);
+  ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx - hw, cy);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.fillStyle = palette.base;
+  ctx.fillRect(0, 0, TILE_TEX_W, TILE_TEX_H);
+
+  // Faint mottling: enough to break the flat fill, not enough to make a motif.
+  for (let i = 0; i < 6; i += 1) {
+    ctx.beginPath();
+    ctx.ellipse(
+      random() * TILE_TEX_W,
+      random() * TILE_TEX_H,
+      8 + random() * 16,
+      4 + random() * 8,
+      random() * TAU, 0, TAU,
+    );
+    ctx.fillStyle = palette.blotches[(random() * palette.blotches.length) | 0];
+    ctx.globalAlpha = 0.3 + random() * 0.25;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Fine grain, which reads as texture at any scale.
+  for (let i = 0; i < 60; i += 1) {
+    ctx.fillStyle = palette.speck[(random() * palette.speck.length) | 0];
+    ctx.globalAlpha = 0.2 + random() * 0.35;
+    const size = random() < 0.82 ? 1 : 2;
+    ctx.fillRect((random() * TILE_TEX_W) | 0, (random() * TILE_TEX_H) | 0, size, size);
+  }
+  ctx.globalAlpha = 1;
+
+  // Dry ground cracks.
+  for (let i = 0; i < palette.cracks; i += 1) {
+    ctx.beginPath();
+    let x = 10 + random() * (TILE_TEX_W - 20);
+    let y = 10 + random() * (TILE_TEX_H - 20);
+    ctx.moveTo(x, y);
+    for (let step = 0; step < 3; step += 1) {
+      x += (random() - 0.5) * 14;
+      y += (random() - 0.5) * 8;
+      ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(30,22,14,.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/* ----------------------------------- decor -------------------------------- */
+
+/*
+  Every prop shares one canvas size and one ground anchor, so a single pool of
+  sprites can swap between them without touching the origin.
+*/
+const DECOR_TEX_W = 104;
+const DECOR_TEX_H = 168;
+const DECOR_AX = DECOR_TEX_W / 2;   // 52
+const DECOR_AY = 152;               // trees need to tower over Wilson
+
+function drawDecor(ctx, kind) {
+  const ax = DECOR_AX;
+  const ay = DECOR_AY;
+  // seed off the prop name, so each prop's jitter is its own but reproducible
+  let nameSeed = 3;
+  for (let i = 0; i < kind.length; i += 1) nameSeed = Math.imul(nameSeed, 31) + kind.charCodeAt(i);
+  const random = mulberry32(nameSeed);
+
+  switch (kind) {
+    /* ------------------------------------------------------------- tree */
+    case 'tree': {
+      groundShadow(ctx, ax, ay, 26, 9, 0.3);
+
+      // trunk
+      ctx.beginPath();
+      ctx.moveTo(ax - 6, ay);
+      ctx.lineTo(ax - 4.5, ay - 26);
+      ctx.lineTo(ax + 4.5, ay - 26);
+      ctx.lineTo(ax + 6, ay);
+      ctx.closePath();
+      paint(ctx, '#4a3524', 3);
+
+      // four foliage tiers, bottom first
+      const tiers = [
+        [ay - 18, 36, 42],
+        [ay - 47, 30, 36],
+        [ay - 74, 23, 32],
+        [ay - 97, 15, 26],
+      ];
+      tiers.forEach(([baseY, halfWidth, height], i) => {
+        ctx.beginPath();
+        ctx.moveTo(ax - halfWidth, baseY);
+        ctx.lineTo(ax - halfWidth * 0.45, baseY - height * 0.35);
+        ctx.lineTo(ax, baseY - height);
+        ctx.lineTo(ax + halfWidth * 0.45, baseY - height * 0.35);
+        ctx.lineTo(ax + halfWidth, baseY);
+        ctx.closePath();
+        paint(ctx, i >= 2 ? '#33502f' : '#2c4529', 3);
+
+        // lit left flank
+        ctx.beginPath();
+        ctx.moveTo(ax - halfWidth * 0.82, baseY - 2);
+        ctx.lineTo(ax - 2, baseY - height * 0.86);
+        ctx.lineTo(ax - 2, baseY - 2);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(96,140,80,.28)';
+        ctx.fill();
+      });
+      break;
+    }
+
+    /* ------------------------------------------------------- dead tree */
+    case 'deadtree': {
+      groundShadow(ctx, ax, ay, 21, 7, 0.26);
+
+      ctx.beginPath();
+      ctx.moveTo(ax - 9, ay);
+      ctx.quadraticCurveTo(ax - 4, ay - 44, ax - 4.5, ay - 82);
+      ctx.lineTo(ax + 4.5, ay - 82);
+      ctx.quadraticCurveTo(ax + 5, ay - 40, ax + 9, ay);
+      ctx.closePath();
+      paint(ctx, '#584331', 3);
+
+      const branches = [
+        [ax - 3, ay - 58, ax - 28, ay - 78],
+        [ax + 3, ay - 66, ax + 26, ay - 88],
+        [ax - 2, ay - 76, ax - 17, ay - 99],
+        [ax + 2, ay - 78, ax + 15, ay - 101],
+      ];
+      branches.forEach(([x1, y1, x2, y2]) => {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.quadraticCurveTo((x1 + x2) / 2, y1 - 10, x2, y2);
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = INK;
+        ctx.stroke();
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#6a533d';
+        ctx.stroke();
+      });
+      break;
+    }
+
+    /* ------------------------------------------------------------ rock */
+    case 'rock': {
+      groundShadow(ctx, ax, ay, 22, 7, 0.28);
+
+      ctx.beginPath();
+      const points = 8;
+      for (let i = 0; i < points; i += 1) {
+        const angle = (i / points) * TAU - Math.PI / 2;
+        const radius = 20 + random() * 6;
+        const px = ax + Math.cos(angle) * radius;
+        const py = ay - 15 + Math.sin(angle) * radius * 0.72;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      paint(ctx, '#7b7973', 3);
+
+      // top facet
+      ctx.beginPath();
+      ctx.moveTo(ax - 15, ay - 21);
+      ctx.lineTo(ax - 3, ay - 33);
+      ctx.lineTo(ax + 12, ay - 24);
+      ctx.lineTo(ax - 1, ay - 17);
+      ctx.closePath();
+      paint(ctx, '#948f86', 2);
+
+      // cracks + a couple of gold flecks
+      ctx.beginPath();
+      ctx.moveTo(ax + 4, ay - 16);
+      ctx.lineTo(ax + 9, ay - 6);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(24,18,12,.55)';
+      ctx.stroke();
+
+      ctx.fillStyle = '#c9a24a';
+      [[ax - 8, ay - 10, 1.8], [ax + 6, ay - 26, 1.5]].forEach(([fx, fy, fr]) => {
+        ctx.beginPath();
+        ctx.arc(fx, fy, fr, 0, TAU);
+        ctx.fill();
+      });
+      break;
+    }
+
+    /* ------------------------------------------------------ berry bush */
+    case 'bush': {
+      groundShadow(ctx, ax, ay, 20, 6, 0.24);
+
+      blobCircles(ctx, [
+        [ax - 11, ay - 13, 12],
+        [ax + 11, ay - 13, 12],
+        [ax, ay - 22, 14],
+      ], '#3a5430', 3);
+
+      ctx.beginPath();
+      ctx.arc(ax - 6, ay - 26, 8, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.fillStyle = 'rgba(110,150,88,.35)';
+      ctx.fill();
+
+      const berries = [[-13, -8], [-2, -16], [10, -10], [4, -26], [-9, -22]];
+      berries.forEach(([bx, by]) => {
+        ctx.beginPath();
+        ctx.arc(ax + bx, ay + by, 3.2, 0, TAU);
+        paint(ctx, '#a8302a', 1.6);
+      });
+      break;
+    }
+
+    /* --------------------------------------------------------- sapling */
+    case 'sapling': {
+      groundShadow(ctx, ax, ay, 13, 5, 0.2);
+      for (let i = 0; i < 5; i += 1) {
+        const lean = (i - 2) * 6;
+        ctx.beginPath();
+        ctx.moveTo(ax + lean * 0.25, ay - 2);
+        ctx.quadraticCurveTo(ax + lean * 0.7, ay - 18, ax + lean, ay - 30 - random() * 6);
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = 'rgba(23,18,12,.8)';
+        ctx.stroke();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#8a6a45';
+        ctx.stroke();
+      }
+      break;
+    }
+
+    /* ------------------------------------------------------ grass tuft */
+    case 'tuft': {
+      for (let i = 0; i < 7; i += 1) {
+        const lean = (i - 3) * 4.2;
+        const height = 12 + random() * 9;
+        ctx.beginPath();
+        ctx.moveTo(ax + lean * 0.3, ay - 1);
+        ctx.quadraticCurveTo(ax + lean * 0.8, ay - height * 0.6, ax + lean * 1.5, ay - height);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(23,18,12,.75)';
+        ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = i % 2 ? '#5c7340' : '#6d8449';
+        ctx.stroke();
+      }
+      break;
+    }
+
+    /* ---------------------------------------------------------- flower */
+    case 'flower': {
+      ctx.beginPath();
+      ctx.moveTo(ax, ay - 1);
+      ctx.quadraticCurveTo(ax - 3, ay - 10, ax - 1, ay - 17);
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = INK;
+      ctx.stroke();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#5c7340';
+      ctx.stroke();
+
+      for (let i = 0; i < 5; i += 1) {
+        const angle = (i / 5) * TAU;
+        ctx.beginPath();
+        ctx.arc(ax - 1 + Math.cos(angle) * 4.4, ay - 19 + Math.sin(angle) * 4.4, 3.2, 0, TAU);
+        paint(ctx, '#d6bd5e', 1.6);
+      }
+      ctx.beginPath();
+      ctx.arc(ax - 1, ay - 19, 2.4, 0, TAU);
+      paint(ctx, '#8b6f2e', 1.4);
+      break;
+    }
+
+    /* ----------------------------------------------------------- bones */
+    case 'bones': {
+      groundShadow(ctx, ax, ay, 17, 5, 0.18);
+
+      // Two long bones lying crossed on the ground, then a skull resting on
+      // top: read as a carcass rather than the fan of ribs this used to be.
+      [[-14, -2, 13, -9], [-13, -9, 14, -2]].forEach(([x1, y1, x2, y2]) => {
+        ctx.beginPath();
+        ctx.moveTo(ax + x1, ay + y1);
+        ctx.lineTo(ax + x2, ay + y2);
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = INK;
+        ctx.stroke();
+        ctx.lineWidth = 3.6;
+        ctx.strokeStyle = '#cfc7b0';
+        ctx.stroke();
+
+        // knuckle ends
+        [[x1, y1], [x2, y2]].forEach(([kx, ky]) => {
+          ctx.beginPath();
+          ctx.arc(ax + kx, ay + ky, 3, 0, TAU);
+          paint(ctx, '#cfc7b0', 2);
+        });
+      });
+
+      // skull: dome + snout, low contrast so it does not shout
+      ctx.beginPath();
+      ctx.moveTo(ax - 3, ay - 6);
+      ctx.quadraticCurveTo(ax - 1, ay - 20, ax + 11, ay - 18);
+      ctx.quadraticCurveTo(ax + 20, ay - 16, ax + 17, ay - 8);
+      ctx.quadraticCurveTo(ax + 14, ay - 3, ax + 4, ay - 4);
+      ctx.closePath();
+      paint(ctx, '#d9d1bb', 2.4);
+
+      ctx.fillStyle = '#3b3327';
+      [[ax + 7, ay - 13, 2.4, 2.6], [ax + 14, ay - 12, 2, 2.2]].forEach(([ex, ey, erx, ery]) => {
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, erx, ery, 0, 0, TAU);
+        ctx.fill();
+      });
+      break;
+    }
+
+    /* ----------------------------------------------------------- twigs */
+    case 'twigs': {
+      const twigs = [[-12, 0, 6, -5], [-8, -3, 10, 2], [-2, 3, 12, -3]];
+      twigs.forEach(([x1, y1, x2, y2]) => {
+        ctx.beginPath();
+        ctx.moveTo(ax + x1, ay + y1 - 2);
+        ctx.lineTo(ax + x2, ay + y2 - 2);
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = 'rgba(23,18,12,.8)';
+        ctx.stroke();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#7b6449';
+        ctx.stroke();
+      });
+      break;
+    }
+
+    /* --------------------------------------------------------- pebbles */
+    case 'pebbles': {
+      // Thin outlines and a low-contrast fill: a thick ink line at this size
+      // turned them into little rings scattered over the whole badland.
+      const stones = [[-11, -1, 7, 4.4], [0, -6, 5.4, 3.4], [9, 0, 8, 5]];
+      stones.forEach(([sx, sy, rx, ry]) => {
+        ctx.beginPath();
+        ctx.ellipse(ax + sx, ay + sy - 1, rx, ry, 0, 0, TAU);
+        ctx.fillStyle = '#8a8276';
+        ctx.fill();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(28,22,15,.65)';
+        ctx.stroke();
+
+        // a lit top edge, so they read as stones and not holes
+        ctx.beginPath();
+        ctx.ellipse(ax + sx - rx * 0.2, ay + sy - 2.4, rx * 0.55, ry * 0.4, 0, Math.PI, TAU);
+        ctx.fillStyle = 'rgba(212,203,186,.45)';
+        ctx.fill();
+      });
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+/* ---------------------------------- Wilson -------------------------------- */
+
+/*
+  Wilson: pale, gangly, black swoop of hair, thin moustache, maroon waistcoat
+  over a white shirt, brown trousers, heavy black shoes. Three views (front,
+  side, back) x three walk steps. The walk bob is baked into each frame so the
+  sprite's y never moves, which keeps the contact shadow planted and the depth
+  sort stable.
+*/
+const HERO_TEX_W = 96;
+const HERO_TEX_H = 152;
+const HERO_AX = HERO_TEX_W / 2;   // 48
+const HERO_AY = 142;              // leaves headroom for the pompadour
+
+const SKIN = '#f0d2ac';
+const SKIN_SHADE = '#d9b285';
+const SHIRT = '#e9e2d2';
+const VEST = '#8e2f28';
+const VEST_DARK = '#71241e';
+const PANTS = '#5d4a33';
+const SHOE = '#241c14';
+const HAIR = '#241a13';
+
+/** A limb: fat ink stroke, then a thinner coloured stroke on top. */
+function limb(ctx, x1, y1, cx, cy, x2, y2, colour, width) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo(cx, cy, x2, y2);
+  ctx.lineWidth = width + 4;
+  ctx.strokeStyle = INK;
+  ctx.stroke();
+  ctx.lineWidth = width;
+  ctx.strokeStyle = colour;
+  ctx.stroke();
+}
+
+function drawWilson(ctx, view, step) {
+  const ax = HERO_AX;
+  const ay = HERO_AY;
+  const bob = step === 0 ? 0 : -2;
+  const swing = step === 1 ? 9 : (step === 2 ? -9 : 0);
+
+  const hipY = ay - 38 + bob;
+  const shoulderY = ay - 72 + bob;
+  const headCY = ay - 94 + bob;
+
+  groundShadow(ctx, ax, ay, 21, 7, 0.3);
+
+  /* ------------------------------------------------------------ legs */
+  const legSpread = view === 'side' ? 4 : 9;
+  const legs = [
+    { x: ax - legSpread, sw: -swing, shade: true },
+    { x: ax + legSpread, sw: swing, shade: false },
+  ];
+
+  legs.forEach(({ x, sw, shade }) => {
+    limb(ctx, x, hipY - 2, x + sw * 0.3, hipY + 12, x + sw * 0.55, ay - 7,
+      shade ? '#4c3c29' : PANTS, 9);
+
+    ctx.beginPath();
+    ctx.ellipse(x + sw * 0.8, ay - 4, 10.5, 5.2, 0, 0, TAU);
+    paint(ctx, shade ? '#1b150f' : SHOE, 2.4);
+  });
+
+  /* ----------------------------------------------------------- torso */
+  ctx.beginPath();
+  const torsoHalf = view === 'side' ? 13 : 19;
+  ctx.moveTo(ax - torsoHalf, shoulderY + 3);
+  ctx.quadraticCurveTo(ax - torsoHalf - 2, hipY - 8, ax - torsoHalf + 4, hipY + 1);
+  ctx.lineTo(ax + torsoHalf - 4, hipY + 1);
+  ctx.quadraticCurveTo(ax + torsoHalf + 2, hipY - 8, ax + torsoHalf, shoulderY + 3);
+  ctx.quadraticCurveTo(ax, shoulderY - 7, ax - torsoHalf, shoulderY + 3);
+  ctx.closePath();
+  paint(ctx, SHIRT, 3);
+
+  // The waistcoat: full panel from behind or in profile, a V from the front.
+  if (view === 'front') {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(ax + side * torsoHalf, shoulderY + 3);
+      ctx.lineTo(ax + side * 3, shoulderY + 12);
+      ctx.lineTo(ax + side * 4.5, hipY + 1);
+      ctx.lineTo(ax + side * (torsoHalf - 4), hipY + 1);
+      ctx.quadraticCurveTo(ax + side * (torsoHalf + 2), hipY - 8, ax + side * torsoHalf, shoulderY + 3);
+      ctx.closePath();
+      paint(ctx, side < 0 ? VEST : VEST_DARK, 2.4);
+    });
+
+    // shirt buttons down the visible strip
+    ctx.fillStyle = '#b9ae95';
+    [0, 1, 2].forEach((i) => {
+      ctx.beginPath();
+      ctx.arc(ax, shoulderY + 20 + i * 9, 1.3, 0, TAU);
+      ctx.fill();
+    });
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(ax - torsoHalf, shoulderY + 5);
+    ctx.quadraticCurveTo(ax - torsoHalf - 2, hipY - 8, ax - torsoHalf + 4, hipY + 1);
+    ctx.lineTo(ax + torsoHalf - 4, hipY + 1);
+    ctx.quadraticCurveTo(ax + torsoHalf + 2, hipY - 8, ax + torsoHalf, shoulderY + 5);
+    ctx.quadraticCurveTo(ax, shoulderY - 3, ax - torsoHalf, shoulderY + 5);
+    ctx.closePath();
+    paint(ctx, view === 'back' ? VEST : VEST_DARK, 2.4);
+  }
+
+  /* ------------------------------------------------------------ arms */
+  const armSpec = view === 'side'
+    ? [{ x: ax + 6, sw: swing }]
+    : [{ x: ax - torsoHalf - 1, sw: swing }, { x: ax + torsoHalf + 1, sw: -swing }];
+
+  armSpec.forEach(({ x, sw }) => {
+    const dir = Math.sign(x - ax) || 1;
+    limb(ctx, x, shoulderY + 6, x + dir * 5, shoulderY + 24, x + dir * 2 + sw * 0.5, shoulderY + 36,
+      SHIRT, 7);
+
+    ctx.beginPath();
+    ctx.arc(x + dir * 2 + sw * 0.5, shoulderY + 39, 5, 0, TAU);
+    paint(ctx, SKIN, 2.4);
+  });
+
+  /* ------------------------------------------------------------ neck */
+  ctx.beginPath();
+  ctx.rect(ax - 5, headCY + 14, 10, 10);
+  paint(ctx, SKIN_SHADE, 2.4);
+
+  /* ------------------------------------------------------------ head */
+  ctx.beginPath();
+  if (view === 'side') {
+    // profile: domed skull, brow, a proper nose, then jaw and chin
+    ctx.moveTo(ax - 15, headCY - 13);
+    ctx.quadraticCurveTo(ax + 4, headCY - 25, ax + 13, headCY - 6);
+    ctx.lineTo(ax + 11, headCY - 2);
+    ctx.quadraticCurveTo(ax + 22, headCY + 1, ax + 12, headCY + 4.5);   // nose
+    ctx.quadraticCurveTo(ax + 15, headCY + 11, ax + 6, headCY + 17);
+    ctx.quadraticCurveTo(ax - 8, headCY + 22, ax - 16, headCY + 7);
+    ctx.quadraticCurveTo(ax - 21, headCY - 4, ax - 15, headCY - 13);
+  } else {
+    // a long face with a narrow chin, not a circle
+    ctx.moveTo(ax - 17.5, headCY - 4);
+    ctx.quadraticCurveTo(ax - 18.5, headCY - 21, ax, headCY - 21);
+    ctx.quadraticCurveTo(ax + 18.5, headCY - 21, ax + 17.5, headCY - 4);
+    ctx.quadraticCurveTo(ax + 16, headCY + 13, ax, headCY + 20);
+    ctx.quadraticCurveTo(ax - 16, headCY + 13, ax - 17.5, headCY - 4);
+  }
+  ctx.closePath();
+  paint(ctx, SKIN, 3);
+
+  // ears
+  if (view !== 'side') {
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.ellipse(ax + side * 17.5, headCY + 1, 3.8, 5.4, 0, 0, TAU);
+      paint(ctx, SKIN_SHADE, 2.2);
+    });
+  } else {
+    ctx.beginPath();
+    ctx.ellipse(ax - 7, headCY + 3, 3.8, 5, 0, 0, TAU);
+    paint(ctx, SKIN_SHADE, 2.2);
+  }
+
+  /* ------------------------------------------------------------ hair */
+  ctx.beginPath();
+  if (view === 'front') {
+    ctx.moveTo(ax - 17.5, headCY - 4);
+    ctx.quadraticCurveTo(ax - 21, headCY - 22, ax - 7, headCY - 25);
+    ctx.quadraticCurveTo(ax + 3, headCY - 39, ax + 22, headCY - 29);   // the pompadour
+    ctx.quadraticCurveTo(ax + 14, headCY - 23, ax + 18, headCY - 7);
+    ctx.quadraticCurveTo(ax + 8, headCY - 16, ax - 4, headCY - 13);
+    ctx.quadraticCurveTo(ax - 13, headCY - 11, ax - 17.5, headCY - 4);
+  } else if (view === 'side') {
+    ctx.moveTo(ax - 17, headCY - 2);
+    ctx.quadraticCurveTo(ax - 21, headCY - 21, ax - 6, headCY - 24);
+    ctx.quadraticCurveTo(ax + 8, headCY - 39, ax + 26, headCY - 25);   // swoops forward
+    ctx.quadraticCurveTo(ax + 15, headCY - 21, ax + 12, headCY - 11);
+    ctx.quadraticCurveTo(ax - 2, headCY - 16, ax - 17, headCY - 2);
+  } else {
+    ctx.moveTo(ax - 18, headCY + 6);
+    ctx.quadraticCurveTo(ax - 22, headCY - 19, ax - 6, headCY - 25);
+    ctx.quadraticCurveTo(ax + 4, headCY - 39, ax + 21, headCY - 29);
+    ctx.quadraticCurveTo(ax + 15, headCY - 16, ax + 18, headCY + 6);
+    ctx.quadraticCurveTo(ax, headCY + 13, ax - 18, headCY + 6);
+  }
+  ctx.closePath();
+  paint(ctx, HAIR, 2.6);
+
+  /* ------------------------------------------------------------ face */
+  if (view === 'front') {
+    [-6.5, 6.5].forEach((dx) => {
+      ctx.beginPath();
+      ctx.ellipse(ax + dx, headCY - 1, 3.1, 3.9, 0, 0, TAU);
+      paint(ctx, '#fbf7ee', 1.8);
+      ctx.beginPath();
+      ctx.arc(ax + dx + (dx > 0 ? 0.5 : -0.5), headCY, 1.7, 0, TAU);
+      ctx.fillStyle = '#211a12';
+      ctx.fill();
+    });
+
+    // brows
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = HAIR;
+    [-6.5, 6.5].forEach((dx) => {
+      ctx.beginPath();
+      ctx.moveTo(ax + dx - 3.6, headCY - 7);
+      ctx.quadraticCurveTo(ax + dx, headCY - 8.8, ax + dx + 3.6, headCY - 7);
+      ctx.stroke();
+    });
+
+    // nose
+    ctx.beginPath();
+    ctx.moveTo(ax - 2.2, headCY + 6);
+    ctx.quadraticCurveTo(ax, headCY + 2.5, ax + 2.2, headCY + 6);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#b8895c';
+    ctx.stroke();
+
+    // the moustache
+    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = HAIR;
+    [-1, 1].forEach((side) => {
+      ctx.beginPath();
+      ctx.moveTo(ax + side * 0.5, headCY + 8.5);
+      ctx.quadraticCurveTo(ax + side * 5.5, headCY + 9, ax + side * 8, headCY + 6);
+      ctx.stroke();
+    });
+
+    // mouth
+    ctx.beginPath();
+    ctx.moveTo(ax - 3, headCY + 13);
+    ctx.quadraticCurveTo(ax, headCY + 15, ax + 3, headCY + 13);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = '#8a5c3d';
+    ctx.stroke();
+  } else if (view === 'side') {
+    ctx.beginPath();
+    ctx.ellipse(ax + 5, headCY - 2, 2.5, 3.2, 0, 0, TAU);
+    paint(ctx, '#fbf7ee', 1.4);
+    ctx.beginPath();
+    ctx.arc(ax + 6, headCY - 1.4, 1.6, 0, TAU);
+    ctx.fillStyle = '#211a12';
+    ctx.fill();
+
+    // brow
+    ctx.beginPath();
+    ctx.moveTo(ax + 1.5, headCY - 8);
+    ctx.quadraticCurveTo(ax + 5, headCY - 10, ax + 8.5, headCY - 7.5);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = HAIR;
+    ctx.stroke();
+
+    // moustache, hanging off the profile
+    ctx.beginPath();
+    ctx.moveTo(ax + 3, headCY + 8);
+    ctx.quadraticCurveTo(ax + 9, headCY + 8.5, ax + 12.5, headCY + 5);
+    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = HAIR;
+    ctx.stroke();
+  }
+}
+
+/* ----------------------------------- egg ---------------------------------- */
+
+const EGG_TEX_W = 44;
+const EGG_TEX_H = 56;
+const EGG_AX = EGG_TEX_W / 2;
+const EGG_AY = 48;
+
+function drawEgg(ctx) {
+  groundShadow(ctx, EGG_AX, EGG_AY, 12.5, 4.8, 0.3);
+
+  ctx.beginPath();
+  ctx.ellipse(EGG_AX, EGG_AY - 15, 11.5, 15, 0, 0, TAU);
+  paint(ctx, '#efe3ca', 3);
+
+  // speckles
+  const random = mulberry32(4242);
+  for (let i = 0; i < 11; i += 1) {
+    const angle = random() * TAU;
+    const radius = random() * 0.78;
+    ctx.beginPath();
+    ctx.arc(
+      EGG_AX + Math.cos(angle) * radius * 10.5,
+      EGG_AY - 15 + Math.sin(angle) * radius * 13.5,
+      1 + random() * 1.4, 0, TAU,
+    );
+    ctx.fillStyle = 'rgba(138,106,74,.75)';
+    ctx.fill();
+  }
+
+  // highlight
+  ctx.beginPath();
+  ctx.ellipse(EGG_AX - 3.6, EGG_AY - 22, 3.6, 5.2, -0.4, 0, TAU);
+  ctx.fillStyle = 'rgba(255,252,242,.75)';
+  ctx.fill();
+}
+
+/* ==========================================================================
+   4. DOM controllers
+   ========================================================================== */
+
+const dom = {
+  root: document.getElementById('game-root'),
+  hungerPlaque: document.getElementById('hunger-plaque'),
+  hungerValue: document.querySelector('[data-testid="hunger-value"]'),
+  hungerMax: document.querySelector('[data-testid="hunger-max"]'),
+  hungerFill: document.getElementById('hunger-fill'),
+  eggTracker: document.querySelector('[data-testid="egg-tracker"]'),
+  eggsEaten: document.querySelector('[data-testid="eggs-eaten"]'),
+  compass: document.getElementById('egg-compass'),
+  timerEgg: document.getElementById('t-egg'),
+  timerHunger: document.getElementById('t-hunger'),
+  joystick: document.getElementById('joystick'),
+  joyBase: document.getElementById('joy-base'),
+  joyKnob: document.getElementById('joy-knob'),
+  btnJoystick: document.getElementById('btn-joystick'),
+  btnHelp: document.getElementById('btn-help'),
+  btnHelpClose: document.getElementById('btn-help-close'),
+  btnRestart: document.getElementById('btn-restart'),
+  btnPlay: document.getElementById('btn-play'),
+  overlayTitle: document.getElementById('overlay-title'),
+  overlayHelp: document.getElementById('overlay-help'),
+  overlayError: document.getElementById('overlay-error'),
+};
+
+/** The HUD, kept dumb: the scene pushes numbers in, this only renders them. */
+const hud = {
+  setHunger(value, max) {
+    dom.hungerValue.textContent = String(value);
+    dom.hungerMax.textContent = String(max);
+    dom.hungerPlaque.dataset.hunger = String(value);
+    dom.hungerPlaque.dataset.hungerMax = String(max);
+    dom.hungerFill.style.width = `${Math.max(0, Math.min(100, (value / max) * 100))}%`;
+    document.body.dataset.starving = value <= 0 ? 'true' : 'false';
+  },
+  setEggs(eaten, onMap) {
+    dom.eggsEaten.textContent = String(eaten);
+    dom.eggTracker.dataset.eggsEaten = String(eaten);
+    dom.eggTracker.dataset.eggsOnMap = String(onMap);
+  },
+  setCompass(angleDeg) {
+    if (angleDeg === null) {
+      dom.compass.hidden = true;
+      return;
+    }
+    dom.compass.hidden = false;
+    dom.compass.firstElementChild.style.transform = `rotate(${angleDeg}deg)`;
+  },
+  setTimers(eggSeconds, hungerSeconds) {
+    dom.timerEgg.textContent = String(eggSeconds);
+    dom.timerHunger.textContent = String(hungerSeconds);
+  },
+  setState(state) {
+    dom.root.dataset.gameState = state;
+  },
+};
+
+/**
+ * Virtual joystick. Plain DOM on top of the canvas, so touches never reach
+ * Phaser's input manager and the knob styling stays in CSS.
+ * Exposes a normalised vector (magnitude <= 1) that the scene reads each frame.
+ */
+const joystick = {
+  x: 0,
+  y: 0,
+  active: false,
+  visible: false,
+  pointerId: null,
+
+  init() {
+    const isTouch = window.matchMedia('(pointer: coarse)').matches ||
+      navigator.maxTouchPoints > 0 ||
+      'ontouchstart' in window;
+
+    document.body.dataset.touch = String(isTouch);
+    this.setVisible(isTouch);
+
+    dom.joyBase.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.pointerId = event.pointerId;
+      this.active = true;
+      dom.joystick.dataset.active = 'true';
+      try { dom.joyBase.setPointerCapture(event.pointerId); } catch { /* not fatal */ }
+      this.track(event);
+    });
+
+    dom.joyBase.addEventListener('pointermove', (event) => {
+      if (!this.active || event.pointerId !== this.pointerId) return;
+      event.preventDefault();
+      this.track(event);
+    });
+
+    const release = (event) => {
+      if (event.pointerId !== this.pointerId) return;
+      this.reset();
+    };
+    dom.joyBase.addEventListener('pointerup', release);
+    dom.joyBase.addEventListener('pointercancel', release);
+    dom.joyBase.addEventListener('lostpointercapture', release);
+
+    dom.btnJoystick.addEventListener('click', () => this.setVisible(!this.visible));
+  },
+
+  setVisible(visible) {
+    this.visible = visible;
+    dom.joystick.dataset.visible = String(visible);
+    dom.btnJoystick.setAttribute('aria-pressed', String(visible));
+    if (!visible) this.reset();
+  },
+
+  track(event) {
+    const rect = dom.joyBase.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxRadius = rect.width / 2 - 6;
+
+    let dx = event.clientX - cx;
+    let dy = event.clientY - cy;
+    const length = Math.hypot(dx, dy);
+
+    if (length > maxRadius) {
+      dx = (dx / length) * maxRadius;
+      dy = (dy / length) * maxRadius;
+    }
+
+    dom.joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    // small dead zone so a resting thumb does not creep
+    if (length < 7) {
+      this.x = 0;
+      this.y = 0;
+    } else {
+      this.x = dx / maxRadius;
+      this.y = dy / maxRadius;
+    }
+
+    dom.joystick.dataset.x = this.x.toFixed(2);
+    dom.joystick.dataset.y = this.y.toFixed(2);
+  },
+
+  reset() {
+    this.active = false;
+    this.pointerId = null;
+    this.x = 0;
+    this.y = 0;
+    dom.joystick.dataset.active = 'false';
+    dom.joystick.dataset.x = '0';
+    dom.joystick.dataset.y = '0';
+    dom.joyKnob.style.transform = 'translate(0px, 0px)';
+  },
+};
+
+/* ==========================================================================
+   5. The scene
+   ========================================================================== */
+
+class WildernessScene extends Phaser.Scene {
+  constructor() {
+    super('wilderness');
+
+    this.world = null;
+    this.started = false;
+
+    this.hunger = HUNGER_START;
+    this.eggsEaten = 0;
+    this.eggs = [];
+
+    // world-space (screen pixel) position of Wilson's feet
+    this.px = 0;
+    this.py = 0;
+
+    this.walkClock = 0;
+    this.facing = 'front';
+    this.flip = false;
+
+    // culling pools
+    this.tilePool = [];
+    this.decorPool = [];
+    this.tilesUsed = 0;
+    this.decorUsed = 0;
+    this.visibleKey = '';
+
+    this.hudClock = 0;
+  }
+
+  /* ------------------------------------------------------------- create */
+
+  create() {
+    this.buildTextures();
+
+    this.world = generateWorld((Math.random() * 0xffffff) | 0);
+
+    this.cameras.main.setBackgroundColor('#16120c');
+    this.cameras.main.setBounds(
+      -(MAP_SIZE - 1) * HALF_W - TILE_W,
+      -TILE_H,
+      (MAP_SIZE - 1) * TILE_W + TILE_W * 2,
+      (MAP_SIZE - 1) * TILE_H + TILE_H * 2,
+    );
+
+    // Wilson starts in the cleared grassland patch generateWorld picked out.
+    const { spawn } = this.world;
+    this.px = tileToWorldX(spawn.tx, spawn.ty);
+    this.py = tileToWorldY(spawn.tx, spawn.ty);
+
+    // The depth has to be set here as well as in moveWilson: the tile pool is
+    // built after this point, so at depth 0 he would render under the ground.
+    this.player = this.add.image(this.px, this.py, 'wilson', 'front_0')
+      .setOrigin(0.5, HERO_AY / HERO_TEX_H)
+      .setDepth(1000 + this.py + 0.5);
+
+    this.cameras.main.startFollow(this.player, false, 0.16, 0.16);
+    this.applyZoom();
+
+    this.scale.on('resize', () => {
+      this.applyZoom();
+      this.visibleKey = '';   // force a tile rebuild at the new view size
+    });
+
+    this.setupInput();
+    this.refreshVisible();
+
+    hud.setHunger(this.hunger, HUNGER_MAX);
+    hud.setEggs(0, 0);
+    hud.setState('title');
+
+    // Timers only start once the player dismisses the title card, so the very
+    // first 30s window is honest.
+    dom.btnPlay.addEventListener('click', () => this.startPlay());
+    window.addEventListener('keydown', (event) => {
+      if (!this.started && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        this.startPlay();
+      }
+    });
+  }
+
+  startPlay() {
+    if (this.started) return;
+    this.started = true;
+
+    dom.overlayTitle.hidden = true;
+    dom.btnPlay.blur();   // otherwise Space/Enter keeps re-triggering the button
+    hud.setState('playing');
+
+    this.hungerTimer = this.time.addEvent({
+      delay: HUNGER_TICK_MS,
+      loop: true,
+      callback: () => this.setHunger(this.hunger - 1),
+    });
+
+    this.eggTimer = this.time.addEvent({
+      delay: EGG_SPAWN_MS,
+      loop: true,
+      callback: () => this.spawnEgg(),
+    });
+
+    // One egg to start with, so there is something to walk towards.
+    this.spawnEgg();
+  }
+
+  /* ----------------------------------------------------------- textures */
+
+  buildTextures() {
+    // ground: 4 terrain families x 3 variants, all in one atlas
+    const tileFrames = [];
+    TERRAIN.forEach((name) => {
+      for (let variant = 0; variant < TILE_VARIANTS; variant += 1) {
+        tileFrames.push(`${name}_${variant}`);
+      }
+    });
+    addAtlas(this, 'tiles', TILE_TEX_W, TILE_TEX_H, tileFrames, (ctx, frame) => {
+      const [name, variant] = frame.split('_');
+      drawGroundTile(ctx, TILE_PALETTES[name], name.charCodeAt(0) * 7919 + Number(variant) * 104729);
+    });
+
+    // decor (frame names are the DECOR keys)
+    const decorFrames = DECOR.filter(Boolean).map((entry) => entry.key);
+    addAtlas(this, 'decor', DECOR_TEX_W, DECOR_TEX_H, decorFrames, (ctx, frame) => {
+      drawDecor(ctx, frame);
+    });
+
+    // Wilson: three views x three walk steps
+    const heroFrames = [];
+    ['front', 'side', 'back'].forEach((view) => {
+      for (let step = 0; step < 3; step += 1) heroFrames.push(`${view}_${step}`);
+    });
+    addAtlas(this, 'wilson', HERO_TEX_W, HERO_TEX_H, heroFrames, (ctx, frame) => {
+      const [view, step] = frame.split('_');
+      drawWilson(ctx, view, Number(step));
+    });
+
+    addTexture(this, 'egg', EGG_TEX_W, EGG_TEX_H, drawEgg);
+  }
+
+  /* -------------------------------------------------------------- input */
+
+  setupInput() {
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.keys = this.input.keyboard.addKeys('W,A,S,D');
+
+    // Stop the arrow keys and space from scrolling the page.
+    this.input.keyboard.addCapture('UP,DOWN,LEFT,RIGHT,SPACE,W,A,S,D');
+  }
+
+  /** Combined keyboard + joystick direction, in screen space. */
+  readDirection() {
+    let dx = 0;
+    let dy = 0;
+
+    if (this.cursors.left.isDown || this.keys.A.isDown) dx -= 1;
+    if (this.cursors.right.isDown || this.keys.D.isDown) dx += 1;
+    if (this.cursors.up.isDown || this.keys.W.isDown) dy -= 1;
+    if (this.cursors.down.isDown || this.keys.S.isDown) dy += 1;
+
+    if (joystick.active) {
+      dx += joystick.x;
+      dy += joystick.y;
+    }
+
+    const length = Math.hypot(dx, dy);
+    if (length > 1) {
+      dx /= length;
+      dy /= length;
+    }
+
+    return { dx, dy, length: Math.min(length, 1) };
+  }
+
+  /* ------------------------------------------------------------ terrain */
+
+  tileIndex(tx, ty) { return ty * MAP_SIZE + tx; }
+
+  inBounds(tx, ty) {
+    return tx >= MAP_EDGE && ty >= MAP_EDGE &&
+      tx < MAP_SIZE - MAP_EDGE && ty < MAP_SIZE - MAP_EDGE;
+  }
+
+  /** Is the tile inside the playable rim and free of solid props? */
+  walkableTile(tx, ty) {
+    if (!this.inBounds(tx, ty)) return false;
+    const kind = this.world.decor[this.tileIndex(tx, ty)];
+    return !(kind && DECOR[kind].solid);
+  }
+
+  /** Same question, asked with world pixels. */
+  walkableAt(x, y) {
+    const tx = Math.round(worldToTileX(x, y));
+    const ty = Math.round(worldToTileY(x, y));
+    return this.walkableTile(tx, ty);
+  }
+
+  playerTile() {
+    return {
+      tx: Math.round(worldToTileX(this.px, this.py)),
+      ty: Math.round(worldToTileY(this.px, this.py)),
+    };
+  }
+
+  /* --------------------------------------------------------- hunger/eggs */
+
+  setHunger(value) {
+    this.hunger = Math.max(0, Math.min(HUNGER_MAX, value));
+    hud.setHunger(this.hunger, HUNGER_MAX);
+  }
+
+  /** Drops one egg on a random walkable tile 3-16 tiles from Wilson. */
+  spawnEgg() {
+    const origin = this.playerTile();
+
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const angle = Math.random() * TAU;
+      // sqrt keeps the distribution even across the disc rather than clumping
+      const radius = EGG_MIN_TILES +
+        Math.sqrt(Math.random()) * (EGG_RADIUS_TILES - EGG_MIN_TILES);
+      const tx = Math.round(origin.tx + Math.cos(angle) * radius);
+      const ty = Math.round(origin.ty + Math.sin(angle) * radius);
+
+      // Rounding to a tile can push the point just past the radius, so check
+      // the distance again on the tile we actually landed on.
+      const reach = Math.hypot(tx - origin.tx, ty - origin.ty);
+      if (reach > EGG_RADIUS_TILES || reach < EGG_MIN_TILES) continue;
+
+      if (!this.walkableTile(tx, ty)) continue;
+      if (this.eggs.some((egg) => egg.tx === tx && egg.ty === ty)) continue;
+
+      this.addEgg(tx, ty);
+      return true;
+    }
+
+    return false;   // hemmed in by trees; the next tick will try again
+  }
+
+  addEgg(tx, ty) {
+    const x = tileToWorldX(tx, ty);
+    const y = tileToWorldY(tx, ty);
+
+    const sprite = this.add.image(x, y, 'egg')
+      .setOrigin(0.5, EGG_AY / EGG_TEX_H)
+      .setDepth(1000 + y);
+
+    // Scaling about the base keeps the egg planted while it breathes.
+    this.tweens.add({
+      targets: sprite,
+      scale: 1.07,
+      duration: 780,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut',
+    });
+
+    const egg = { sprite, tx, ty, x, y };
+    this.eggs.push(egg);
+
+    // Prototype guard: an idle player would otherwise accumulate eggs forever.
+    if (this.eggs.length > EGG_LIMIT) {
+      let farthestIndex = 0;
+      let farthest = -1;
+      this.eggs.forEach((candidate, index) => {
+        const distance = Math.hypot(candidate.x - this.px, (candidate.y - this.py) * 2);
+        if (distance > farthest) {
+          farthest = distance;
+          farthestIndex = index;
+        }
+      });
+      const [dropped] = this.eggs.splice(farthestIndex, 1);
+      this.tweens.killTweensOf(dropped.sprite);
+      dropped.sprite.destroy();
+    }
+
+    hud.setEggs(this.eggsEaten, this.eggs.length);
+    return egg;
+  }
+
+  eatEgg(index) {
+    const [egg] = this.eggs.splice(index, 1);
+
+    this.eggsEaten += 1;
+    this.setHunger(this.hunger + HUNGER_PER_EGG);
+    hud.setEggs(this.eggsEaten, this.eggs.length);
+
+    this.tweens.killTweensOf(egg.sprite);
+    this.tweens.add({
+      targets: egg.sprite,
+      scale: 1.5,
+      alpha: 0,
+      duration: 260,
+      ease: 'Quad.Out',
+      onComplete: () => egg.sprite.destroy(),
+    });
+
+    this.floatText(egg.x, egg.y - 26, `+${HUNGER_PER_EGG}`);
+  }
+
+  floatText(x, y, message) {
+    const label = this.add.text(x, y, message, {
+      fontFamily: "'Griffy', Georgia, serif",
+      fontSize: '26px',
+      color: '#ffe9a8',
+      stroke: INK,
+      strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(999999);
+
+    this.tweens.add({
+      targets: label,
+      y: y - 46,
+      alpha: 0,
+      duration: 1100,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    });
+  }
+
+  /* ------------------------------------------------------------- camera */
+
+  applyZoom() {
+    const width = this.scale.gameSize.width || window.innerWidth;
+    const zoom = Math.max(0.75, Math.min(1.3, width / 1100));
+    this.cameras.main.setZoom(zoom);
+  }
+
+  /* ------------------------------------------------- tile/decor culling */
+
+  getTile(index) {
+    let image = this.tilePool[index];
+    if (!image) {
+      image = this.add.image(0, 0, 'tiles', 'grass_0').setOrigin(0.5, 0.5).setDepth(0);
+      this.tilePool[index] = image;
+    }
+    return image;
+  }
+
+  getDecor(index) {
+    let image = this.decorPool[index];
+    if (!image) {
+      image = this.add.image(0, 0, 'decor', 'tuft')
+        .setOrigin(0.5, DECOR_AY / DECOR_TEX_H);
+      this.decorPool[index] = image;
+    }
+    return image;
+  }
+
+  /**
+   * Re-points the sprite pools at whatever tiles the camera can see.
+   *
+   * Iteration walks isometric *rows*: every tile with tx+ty = r sits on the
+   * same horizontal screen line, so looping r over the visible rows and
+   * d = tx-ty over the visible columns (matching parity) touches only tiles
+   * that are actually on screen. Roughly 900 tiles for a 720p view.
+   *
+   * Because tile sprites live at fixed world positions, this only has to run
+   * when the visible *set* changes - not every frame.
+   */
+  refreshVisible() {
+    const view = this.cameras.main.worldView;
+
+    // A tile only needs half its own size of slack, but a prop is anchored at
+    // its base and drawn upwards, so an anchor well below the view can still
+    // poke into it. Hence the deeper bottom margin, with tiles skipped there.
+    const marginX = 64;
+    const marginTop = 40;
+    const marginBottom = DECOR_AY + 24;
+
+    const rMin = Math.floor((view.y - marginTop) / HALF_H) - 1;
+    const rMax = Math.ceil((view.bottom + marginBottom) / HALF_H) + 1;
+    const dMin = Math.floor((view.x - marginX) / HALF_W) - 1;
+    const dMax = Math.ceil((view.right + marginX) / HALF_W) + 1;
+
+    const key = `${rMin}:${rMax}:${dMin}:${dMax}`;
+    if (key === this.visibleKey) return;
+    this.visibleKey = key;
+
+    const tileTop = view.y - marginTop;
+    const tileBottom = view.bottom + marginTop;
+
+    const { terrain, decor, seed } = this.world;
+    let tileCount = 0;
+    let decorCount = 0;
+
+    for (let r = rMin; r <= rMax; r += 1) {
+      // tx = (r + d) / 2 has to be an integer, so r and d share parity.
+      let d = dMin;
+      if ((((r + d) % 2) + 2) % 2 !== 0) d += 1;
+
+      for (; d <= dMax; d += 2) {
+        const tx = (r + d) >> 1;
+        const ty = (r - d) >> 1;
+
+        if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
+
+        const index = ty * MAP_SIZE + tx;
+        const x = (tx - ty) * HALF_W;
+        const y = (tx + ty) * HALF_H;
+
+        if (y >= tileTop && y <= tileBottom) {
+          const family = TERRAIN[terrain[index]];
+          const roll = hash2(tx, ty, seed + 31);
+          const variant = (roll * TILE_VARIANTS) | 0;
+
+          const tile = this.getTile(tileCount);
+          tileCount += 1;
+          tile.setTexture('tiles', `${family}_${variant}`);
+          tile.setPosition(x, y);
+          // Brightness wobble on top of the variants, sampled from *smooth*
+          // noise rather than a per-tile hash: neighbours stay close, so it
+          // reads as soft light across the ground instead of a patchwork.
+          // Tint is a vertex attribute, so this is free.
+          tile.setTint(shadeTint(valueNoise(tx * 0.19, ty * 0.19, seed + 613), 0.9));
+          tile.setVisible(true);
+        }
+
+        const kind = decor[index];
+        if (kind) {
+          const prop = this.getDecor(decorCount);
+          decorCount += 1;
+
+          // A deterministic jitter per tile keeps repeats from reading as a grid.
+          const jitter = hash2(tx, ty, seed + 991);
+          const scale = 0.86 + jitter * 0.28;
+
+          prop.setTexture('decor', DECOR[kind].key);
+          prop.setPosition(x + (jitter - 0.5) * 12, y + (hash2(tx, ty, seed + 4477) - 0.5) * 6);
+          prop.setScale(scale);
+          prop.setFlipX(jitter > 0.5);
+          prop.setTint(shadeTint(hash2(tx, ty, seed + 8123), 0.93));
+          prop.setDepth(1000 + y);
+          prop.setVisible(true);
+        }
+      }
+    }
+
+    for (let i = tileCount; i < this.tilesUsed; i += 1) this.tilePool[i].setVisible(false);
+    for (let i = decorCount; i < this.decorUsed; i += 1) this.decorPool[i].setVisible(false);
+
+    this.tilesUsed = tileCount;
+    this.decorUsed = decorCount;
+  }
+
+  /* -------------------------------------------------------------- update */
+
+  update(time, delta) {
+    const dt = Math.min(delta, 50) / 1000;   // clamp so a tab switch cannot teleport him
+
+    if (this.started) {
+      this.moveWilson(dt);
+      this.collectEggs();
+    }
+
+    this.refreshVisible();
+
+    this.hudClock += delta;
+    if (this.hudClock >= 200) {
+      this.hudClock = 0;
+      this.updateHudExtras();
+    }
+  }
+
+  moveWilson(dt) {
+    const { dx, dy, length } = this.readDirection();
+    const moving = length > 0.08;
+
+    if (moving) {
+      const speed = WALK_SPEED * (this.hunger <= 0 ? STARVING_SPEED : 1);
+
+      // Screen Y is half a tile per step, so halving the vertical component
+      // makes movement isotropic in world terms rather than in pixels.
+      const stepX = dx * speed * dt;
+      const stepY = dy * speed * dt * (TILE_H / TILE_W);
+
+      // Axis at a time, so walking into a tree slides along it.
+      if (stepX !== 0 && this.walkableAt(this.px + stepX, this.py)) this.px += stepX;
+      if (stepY !== 0 && this.walkableAt(this.px, this.py + stepY)) this.py += stepY;
+
+      // Which way is he facing? Sideways wins over front/back at a shallow angle.
+      if (Math.abs(dx) >= 0.45) {
+        this.facing = 'side';
+        this.flip = dx < 0;
+      } else {
+        this.facing = dy < 0 ? 'back' : 'front';
+        this.flip = false;
+      }
+
+      this.walkClock += dt * 1000 * Math.max(0.5, length);
+    } else {
+      this.walkClock = 0;
+    }
+
+    // 4-phase cycle: contact, pass, contact, pass
+    const step = moving ? [1, 0, 2, 0][Math.floor(this.walkClock / 125) % 4] : 0;
+
+    this.player.setTexture('wilson', `${this.facing}_${step}`);
+    this.player.setFlipX(this.flip);
+    this.player.setPosition(this.px, this.py);
+    // +0.5 so Wilson wins the tie against decor standing on the same row.
+    this.player.setDepth(1000 + this.py + 0.5);
+  }
+
+  collectEggs() {
+    for (let i = this.eggs.length - 1; i >= 0; i -= 1) {
+      const egg = this.eggs[i];
+      // Measure in tiles, not pixels: the iso grid is twice as wide as it is tall.
+      const distance = Math.hypot((egg.x - this.px) / HALF_W, (egg.y - this.py) / HALF_H);
+      if (distance <= EGG_PICKUP_TILES) this.eatEgg(i);
+    }
+  }
+
+  updateHudExtras() {
+    if (this.eggTimer && this.hungerTimer) {
+      hud.setTimers(
+        Math.ceil(this.eggTimer.getRemainingSeconds()),
+        Math.ceil(this.hungerTimer.getRemainingSeconds()),
+      );
+    }
+
+    // Point the compass at the closest egg, measured in tiles.
+    let nearest = null;
+    let best = Infinity;
+    this.eggs.forEach((egg) => {
+      const distance = Math.hypot((egg.x - this.px) / HALF_W, (egg.y - this.py) / HALF_H);
+      if (distance < best) {
+        best = distance;
+        nearest = egg;
+      }
+    });
+
+    if (!nearest) {
+      hud.setCompass(null);
+      return;
+    }
+
+    const angle = Math.atan2(nearest.y - this.py, nearest.x - this.px) * (180 / Math.PI);
+    hud.setCompass(angle + 90);   // the arrow art points up
+  }
+}
+
+/* ==========================================================================
+   6. Boot
+   ========================================================================== */
+
+function wireOverlays() {
+  dom.btnHelp.addEventListener('click', () => { dom.overlayHelp.hidden = false; });
+  dom.btnHelpClose.addEventListener('click', () => { dom.overlayHelp.hidden = true; });
+  dom.btnRestart.addEventListener('click', () => window.location.reload());
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') dom.overlayHelp.hidden = true;
+  });
+}
+
+function boot() {
+  wireOverlays();
+  joystick.init();
+
+  const game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game-root',
+    backgroundColor: '#16120c',
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      width: '100%',
+      height: '100%',
+    },
+    render: {
+      antialias: true,
+      roundPixels: true,
+    },
+    scene: WildernessScene,
+  });
+
+  // Handy from the console, and a hook for any future Playwright coverage.
+  window.__rogue = { game, joystick, hud };
+}
+
+// Wait for the display font before booting, so the in-world "+5" labels are
+// rasterised with Griffy rather than the fallback serif.
+if (document.fonts && document.fonts.ready) {
+  Promise.race([
+    document.fonts.ready,
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]).then(boot, boot);
+} else {
+  boot();
+}
+
+}());
+</script>
+</body>
+</html>
