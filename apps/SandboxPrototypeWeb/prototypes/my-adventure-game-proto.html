@@ -1,0 +1,2239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="A Secret of Monkey Island style point-and-click prototype set in a haunted mansion: three floors of fifteen rooms off a scrolling hallway, locked doors whose keys hide in the furniture, deck-building card duels against the haunts, and thirty minutes to find all five playing cards."
+  />
+  <title>Blackthorn Manor: Five of a Kind</title>
+
+  <!--
+    Self-contained prototype. One file, vanilla JS, no build step.
+
+      - Phaser 4     -> the scene renderer and input picking
+      - Bootstrap 5.3 -> the verb panel, modals and duel overlay
+
+    Both come from a CDN as asked for, and both fall back to the copies
+    vendored under /vendor/ so the page still renders offline and in CI.
+    Bootstrap falls back through the `onerror` attribute on its tags, Phaser
+    through `loadFallback()` at the bottom of the script.
+
+    All art is drawn procedurally into canvases at boot and registered as
+    Phaser textures, so there are no image requests at all.
+
+    Reading order of the script:
+      1. constants and data tables
+      2. the seeded generator that lays out the mansion
+      3. the art  (every sprite is a function that paints into a 2d context)
+      4. the Phaser scene, walking and hotspots
+      5. the verb interface  (sentence line, inventory, actions)
+      6. the deck-building duel
+      7. boot
+  -->
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    onerror="this.onerror=null;this.href='/vendor/bootstrap-5.3.3/bootstrap.min.css'"
+  />
+
+  <style>
+    :root {
+      --ink: #0b0a10;
+      --panel: #1b1526;
+      --panel-edge: #4a3a63;
+      --brass: #d9a441;
+      --parchment: #f2e4c3;
+      --verb: #cbb6e8;
+      --verb-hot: #ffd97a;
+      --ghost: #9fe8e0;
+      --blood: #b8433a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--ink);
+      color: var(--parchment);
+      font-family: 'Georgia', 'Times New Roman', serif;
+      user-select: none;
+    }
+
+    /* ---- stage ------------------------------------------------------- */
+
+    #stage {
+      position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      background:
+        radial-gradient(circle at 50% 30%, #1d1830, #06050a 70%);
+    }
+    #stage canvas { display: block; }
+
+    .prototype-back {
+      position: absolute;
+      z-index: 30;
+      top: .5rem;
+      left: .75rem;
+      color: #b9a9d6;
+      font-size: .78rem;
+      text-decoration: none;
+      letter-spacing: .04em;
+      background: rgba(10, 8, 16, .72);
+      border: 1px solid #3d3157;
+      border-radius: 999px;
+      padding: .18rem .7rem;
+    }
+    .prototype-back:hover { color: var(--verb-hot); border-color: var(--brass); }
+
+    #boot-error {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      place-items: center;
+      text-align: center;
+      padding: 2rem;
+      background: #06050a;
+    }
+    body[data-boot='failed'] #boot-error { display: grid; }
+
+    /* ---- verb panel -------------------------------------------------- */
+
+    #panel {
+      flex: 0 0 auto;
+      background:
+        linear-gradient(180deg, #241c33, #150f20 60%, #0e0a16);
+      border-top: 2px solid var(--panel-edge);
+      box-shadow: 0 -12px 30px rgba(0, 0, 0, .6);
+      padding: .35rem .6rem .5rem;
+    }
+
+    #sentence {
+      min-height: 1.7rem;
+      text-align: center;
+      font-size: clamp(.85rem, 2.1vw, 1.15rem);
+      letter-spacing: .03em;
+      color: var(--verb-hot);
+      text-shadow: 0 2px 0 #000;
+      padding: .1rem 0 .2rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) minmax(0, 12rem);
+      gap: .5rem;
+      align-items: stretch;
+    }
+
+    .verbs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .12rem .35rem;
+    }
+
+    .verb {
+      appearance: none;
+      background: none;
+      border: 0;
+      padding: .05rem .15rem;
+      font-family: inherit;
+      font-size: clamp(.7rem, 1.7vw, .98rem);
+      line-height: 1.25;
+      color: var(--verb);
+      text-align: center;
+      text-shadow: 0 2px 0 #000;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    .verb:hover { color: var(--verb-hot); }
+    .verb[data-active='true'] {
+      color: #1a1226;
+      background: var(--verb-hot);
+      text-shadow: none;
+    }
+    /* "Walk to" is the default verb, so it gets the whole bottom row. */
+    .verb:last-child { grid-column: 1 / -1; }
+
+    .inventory {
+      position: relative;
+      border: 2px solid var(--panel-edge);
+      border-radius: 5px;
+      background: rgba(6, 5, 10, .6);
+      padding: .25rem 1.6rem .25rem .25rem;
+    }
+    .inv-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .2rem;
+    }
+    .inv-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .1rem;
+      min-height: 3.1rem;
+      padding: .15rem .1rem;
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid #2e2542;
+      border-radius: 4px;
+      color: #c9bce0;
+      font-family: inherit;
+      font-size: .58rem;
+      line-height: 1.05;
+      text-align: center;
+      cursor: pointer;
+    }
+    .inv-slot:hover { border-color: var(--brass); color: var(--verb-hot); }
+    .inv-slot[data-selected='true'] { border-color: var(--verb-hot); background: rgba(255, 217, 122, .16); }
+    .inv-slot.is-empty { cursor: default; opacity: .35; }
+    .inv-slot canvas { display: block; }
+
+    .inv-arrows {
+      position: absolute;
+      top: .25rem;
+      right: .25rem;
+      bottom: .25rem;
+      display: flex;
+      flex-direction: column;
+      gap: .2rem;
+    }
+    .inv-arrows button {
+      flex: 1;
+      width: 1.15rem;
+      padding: 0;
+      font-size: .65rem;
+      line-height: 1;
+      color: #1a1226;
+      background: #8d7ab0;
+      border: 0;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .inv-arrows button:disabled { opacity: .3; cursor: default; }
+
+    .status {
+      display: flex;
+      flex-direction: column;
+      gap: .18rem;
+      font-size: .72rem;
+      letter-spacing: .03em;
+    }
+    .status-row { display: flex; justify-content: space-between; gap: .4rem; }
+    .status-row b { color: #fff; font-weight: 600; }
+    #timer[data-low='true'] { color: var(--blood); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    .suits { display: flex; gap: .2rem; }
+    .suit {
+      width: 1.15rem;
+      height: 1.55rem;
+      border-radius: 3px;
+      border: 1px solid #4a3a63;
+      background: #17121f;
+      color: #4a3a63;
+      font-size: .85rem;
+      line-height: 1.4rem;
+      text-align: center;
+    }
+    .suit[data-found='true'] { background: var(--parchment); border-color: var(--brass); }
+    .suit[data-found='true'][data-red='true'] { color: #b8433a; }
+    .suit[data-found='true'][data-red='false'] { color: #14101c; }
+
+    .meter {
+      height: .45rem;
+      border-radius: 999px;
+      background: #2a2138;
+      overflow: hidden;
+    }
+    .meter > i { display: block; height: 100%; background: linear-gradient(90deg, #6fc4b4, #d7f36f); }
+
+    .tiny-btn {
+      font-family: inherit;
+      font-size: .68rem;
+      padding: .1rem .5rem;
+      color: var(--parchment);
+      background: #2f2544;
+      border: 1px solid var(--panel-edge);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tiny-btn:hover { border-color: var(--brass); color: var(--verb-hot); }
+
+    /* ---- overlays ---------------------------------------------------- */
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      background: rgba(5, 4, 9, .88);
+      overflow: auto;
+    }
+    .overlay[data-open='true'] { display: block; }
+    .overlay-inner {
+      max-width: 62rem;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .slab {
+      border: 2px solid var(--panel-edge);
+      border-radius: 8px;
+      background: linear-gradient(180deg, #241c33, #120d1c);
+      padding: .8rem 1rem;
+    }
+
+    .duel-top {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .duel-top canvas { flex: 0 0 auto; }
+
+    .hand {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: .8rem;
+    }
+    .card {
+      width: 8.4rem;
+      min-height: 11rem;
+      display: flex;
+      flex-direction: column;
+      gap: .3rem;
+      padding: .5rem;
+      text-align: left;
+      font-family: inherit;
+      color: #1b1420;
+      background: linear-gradient(180deg, #f6ead0, #ddc79b);
+      border: 2px solid #7a5b2e;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform .12s ease;
+    }
+    .card:hover:not(:disabled) { transform: translateY(-.4rem); }
+    .card:disabled { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
+    .card .cost {
+      align-self: flex-end;
+      width: 1.5rem;
+      height: 1.5rem;
+      border-radius: 50%;
+      background: #3b2b52;
+      color: #ffd97a;
+      font-size: .8rem;
+      line-height: 1.5rem;
+      text-align: center;
+    }
+    .card .cname { font-size: .82rem; font-weight: 700; }
+    .card .ctext { font-size: .7rem; line-height: 1.25; }
+
+    .pill {
+      display: inline-block;
+      padding: .1rem .55rem;
+      border-radius: 999px;
+      font-size: .72rem;
+      border: 1px solid var(--panel-edge);
+      background: #191223;
+    }
+
+    .deck-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+
+    h2, h3 { font-family: inherit; letter-spacing: .04em; }
+
+    @media (max-width: 720px) {
+      .panel-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .status { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: .6rem; }
+      .status-row { flex: 1 1 7rem; }
+    }
+  </style>
+</head>
+
+<body data-mode="boot">
+  <div id="stage">
+    <a class="prototype-back" href="/">&larr; All prototypes</a>
+    <h1 class="visually-hidden">Blackthorn Manor: Five of a Kind</h1>
+
+    <div id="boot-error">
+      <div>
+        <h2>The manor stays dark</h2>
+        <p class="text-secondary">
+          This prototype loads Phaser 4 from a CDN and falls back to the copy under
+          <code>/vendor/</code>. Neither could be reached, so the scene cannot be drawn.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="sentence" data-testid="sentence">Walk to</div>
+
+    <div class="panel-grid">
+      <div class="verbs" id="verbs"></div>
+
+      <div class="inventory">
+        <div class="inv-grid" id="inv-grid"></div>
+        <div class="inv-arrows">
+          <button type="button" id="inv-up" aria-label="Scroll inventory up">&#9650;</button>
+          <button type="button" id="inv-down" aria-label="Scroll inventory down">&#9660;</button>
+        </div>
+      </div>
+
+      <div class="status">
+        <div class="status-row"><span>Floor</span><b id="floor" data-testid="floor">Ground</b></div>
+        <div class="status-row"><span>Time left</span><b id="timer" data-testid="timer">30:00</b></div>
+        <div class="status-row">
+          <span>Nerve</span><b id="nerve-text" data-testid="nerve">26 / 26</b>
+        </div>
+        <div class="meter"><i id="nerve-bar" style="width:100%"></i></div>
+        <div class="status-row"><span>Cards</span><b data-testid="cards" id="cards-count">0 / 5</b></div>
+        <div class="suits" id="suits"></div>
+        <div class="d-flex gap-1 mt-1">
+          <button type="button" class="tiny-btn" id="btn-deck" data-testid="open-deck">Deck</button>
+          <button type="button" class="tiny-btn" id="btn-help">Help</button>
+          <button type="button" class="tiny-btn" id="btn-restart" data-testid="restart">New</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- deck-building duel -->
+  <div class="overlay" id="duel" data-testid="duel">
+    <div class="overlay-inner">
+      <div class="slab">
+        <div class="duel-top">
+          <canvas id="duel-ghost" width="150" height="170"></canvas>
+          <div class="flex-grow-1">
+            <h2 class="h4 mb-1" id="duel-name">A Haunt</h2>
+            <div class="mb-1"><span class="pill" id="duel-intent">…</span></div>
+            <div class="small text-secondary">Dread</div>
+            <div class="meter mb-2"><i id="duel-dread" style="width:100%;background:linear-gradient(90deg,#7c5bb5,#d36fd0)"></i></div>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+              <span class="pill" data-testid="duel-nerve">Nerve <b id="duel-nerve">26</b></span>
+              <span class="pill">Guard <b id="duel-guard">0</b></span>
+              <span class="pill">Focus <b id="duel-energy">3</b></span>
+              <span class="pill">Draw <b id="duel-draw">0</b></span>
+              <span class="pill">Discard <b id="duel-discard">0</b></span>
+            </div>
+          </div>
+          <button type="button" class="tiny-btn align-self-start" id="duel-end" data-testid="end-turn">End turn</button>
+        </div>
+
+        <div class="hand" id="duel-hand"></div>
+        <p class="small text-secondary text-center mt-2 mb-0" id="duel-log">&nbsp;</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- reward / deck / help / end -->
+  <div class="overlay" id="modal" data-testid="modal">
+    <div class="overlay-inner">
+      <div class="slab">
+        <h2 class="h4" id="modal-title">…</h2>
+        <div id="modal-body"></div>
+        <div class="mt-3 d-flex gap-2 flex-wrap" id="modal-actions"></div>
+      </div>
+    </div>
+  </div>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js"
+    onerror="window.__phaserCdnFailed = true"
+  ></script>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ================================================================== *
+     * 1. constants and data tables
+     * ================================================================== */
+
+    const VIEW_W = 960;
+    const VIEW_H = 420;
+    const FLOOR_Y = 290;          // where the wall meets the floorboards
+    const PLAYER_Y = 388;         // the player's feet
+    const DOOR_SLOT = 210;
+    const STAIR_X = 1880;
+    const HALL_W = 3920;
+    const WALK_SPEED = 340;       // px per second
+    const GAME_SECONDS = 30 * 60;
+    const LOCKED_DOORS = 6;
+    const HAUNT_COUNT = 8;
+    const MAX_NERVE = 26;
+    const DEFEAT_PENALTY = 90;    // seconds burned when a haunt wins
+
+    const VERBS = [
+      'Open', 'Close', 'Give',
+      'Pick up', 'Look at', 'Talk to',
+      'Push', 'Pull', 'Use',
+      'Walk to',
+    ];
+
+    const FLOOR_LABELS = ['Ground', 'First', 'Attic'];
+
+    const ROOM_NAMES = [
+      [
+        'Grand Foyer', 'Parlour', 'Library', 'Dining Room', 'Kitchen',
+        'Pantry', 'Scullery', 'Billiard Room', 'Conservatory', 'Study',
+        'Music Room', 'Cloak Room', 'Gun Room', 'Chapel', 'Cellar Head',
+      ],
+      [
+        'Portrait Gallery', 'Guest Bedroom', 'Nursery', 'Sewing Room', 'Master Bedroom',
+        'Boudoir', 'Linen Closet', 'Bath House', 'Smoking Room', 'Map Room',
+        'Seance Room', "Widow's Study", 'Blue Room', 'Rose Room', "Servants' Landing",
+      ],
+      [
+        'Attic Loft', 'Dovecote', 'Clock Tower', 'Taxidermy Room', 'Storage Vault',
+        'Old Nursery', 'Dust Room', "Astronomer's Perch", 'Rafters Walk', 'Trunk Room',
+        'Mirror Room', 'Bell Room', 'Cistern Room', "Rook's Nest", "Widow's Walk",
+      ],
+    ];
+
+    const KEYS = [
+      { id: 'brass', name: 'brass key', colour: '#d9a441' },
+      { id: 'iron', name: 'rusty iron key', colour: '#8d8377' },
+      { id: 'silver', name: 'silver key', colour: '#cfd8e3' },
+      { id: 'bone', name: 'bone key', colour: '#e6dcc0' },
+      { id: 'copper', name: 'verdigris key', colour: '#63b09a' },
+      { id: 'crypt', name: 'crypt key', colour: '#a06fd0' },
+    ];
+
+    const SUITS = [
+      { id: 'clubs', glyph: '\u2663', red: false, card: 'Ace of Clubs' },
+      { id: 'spades', glyph: '\u2660', red: false, card: 'Ace of Spades' },
+      { id: 'hearts', glyph: '\u2665', red: true, card: 'Ace of Hearts' },
+      { id: 'diamonds', glyph: '\u2666', red: true, card: 'Ace of Diamonds' },
+      { id: 'joker', glyph: '\u2605', red: true, card: 'The Joker' },
+    ];
+
+    const FURNITURE = {
+      wardrobe:  { name: 'wardrobe',         w: 108, h: 186, look: 'Mothballs, a dinner jacket and the smell of 1897.' },
+      bookshelf: { name: 'bookshelf',        w: 138, h: 176, look: 'Sermons, ledgers, and one book on venomous fungi.' },
+      dresser:   { name: 'dresser',          w: 124, h: 104, look: 'Three drawers. Two of them stick.' },
+      clock:     { name: 'grandfather clock', w: 66, h: 190, look: 'Stopped at eleven minutes past three. Of course it is.' },
+      chest:     { name: 'travelling chest', w: 116, h: 82,  look: 'Steamer labels from ports that no longer exist.' },
+      table:     { name: 'card table',       w: 146, h: 96,  look: 'Green baize, worn bald where someone always sat.' },
+      armchair:  { name: 'wing chair',       w: 106, h: 112, look: 'The cushion still holds the shape of somebody.' },
+      painting:  { name: 'portrait',         w: 116, h: 96,  look: 'The eyes follow me. They are welcome to try.', hangs: true },
+      fireplace: { name: 'fireplace',        w: 164, h: 158, look: 'Cold ash, and a draught coming down the flue.' },
+      barrel:    { name: 'rain barrel',      w: 84, h: 96,   look: 'Half full of black water and a drowned wasp.' },
+    };
+    const FURNITURE_KINDS = Object.keys(FURNITURE);
+
+    const CARDS = {
+      deduction: { name: 'Deduction',   cost: 1, dmg: 4,           text: 'Deal 4 dread.' },
+      lantern:   { name: 'Bullseye Lantern', cost: 1, block: 4,    text: 'Gain 4 guard.' },
+      magnifier: { name: 'Magnifying Glass', cost: 0, draw: 2,     text: 'Draw 2 cards.' },
+      crucifix:  { name: 'Silver Crucifix',  cost: 2, dmg: 9,      text: 'Deal 9 dread.' },
+      saltline:  { name: 'Salt Line',   cost: 1, block: 7,         text: 'Gain 7 guard.' },
+      casenotes: { name: 'Case Notes',  cost: 2, dmg: 5, block: 5, text: 'Deal 5 dread. Gain 5 guard.' },
+      handbell:  { name: 'Hand Bell',   cost: 1, dmg: 3, weaken: 3, text: 'Deal 3 dread. Its next blow lands 3 softer.' },
+      pipe:      { name: 'Briar Pipe',  cost: 0, energy: 1, draw: 1, text: 'Gain 1 focus. Draw 1 card.' },
+      seance:    { name: 'Seance',      cost: 3, dmg: 6, heal: 5,  text: 'Deal 6 dread. Recover 5 nerve.' },
+    };
+    const REWARD_POOL = ['crucifix', 'saltline', 'casenotes', 'handbell', 'pipe', 'seance'];
+    const STARTING_DECK = [
+      'deduction', 'deduction', 'deduction', 'deduction',
+      'lantern', 'lantern', 'lantern', 'magnifier',
+    ];
+
+    const GHOST_NAMES = [
+      'the Grey Housekeeper', 'a Weeping Boy', 'the Drowned Gardener',
+      'the Butler That Waits', 'a Rattling Governess', 'the Cold Twin',
+      'the Man in the Wallpaper', 'a Choir of One',
+    ];
+
+    const EMPTY_SEARCH = [
+      'Dust, a hairpin, and forty years of nobody looking.',
+      'Nothing but a dead moth the size of my thumb.',
+      'Empty. Whoever cleared this out was thorough.',
+      'A pressed flower, quite black. Not evidence of anything.',
+      'Cobwebs. Elementary, and unhelpful.',
+    ];
+
+    /* ================================================================== *
+     * 2. the mansion generator
+     * ================================================================== */
+
+    /** Deterministic 32-bit PRNG so a seed reproduces a whole mansion. */
+    function makeRng(seed) {
+      let s = seed >>> 0 || 1;
+      return () => {
+        s ^= s << 13; s >>>= 0;
+        s ^= s >> 17;
+        s ^= s << 5; s >>>= 0;
+        return s / 4294967296;
+      };
+    }
+
+    function shuffled(list, rand) {
+      const out = list.slice();
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out;
+    }
+
+    const pick = (list, rand) => list[Math.floor(rand() * list.length)];
+
+    /**
+     * Lays out 3 floors x 15 rooms, then hides the loot.
+     *
+     * Solvability is the only thing that needs care. Locked doors are put in
+     * a fixed order, and the key to the nth locked door is only ever hidden
+     * in a room that is either unlocked or earlier in that order — so the
+     * chain can always be walked from one end.
+     */
+    function buildMansion(seed) {
+      const rand = makeRng(seed);
+
+      const floors = ROOM_NAMES.map((names, f) => ({
+        index: f,
+        rooms: names.map((name, i) => ({
+          floor: f, index: i, name,
+          locked: false, keyId: null, open: false, visited: false,
+          haunt: null, furniture: [], ground: [],
+        })),
+      }));
+
+      const all = floors.flatMap((f) => f.rooms);
+
+      all.forEach((room) => {
+        const count = 2 + Math.floor(rand() * 3);
+        room.furniture = shuffled(FURNITURE_KINDS, rand).slice(0, count).map((kind, slot) => ({
+          kind, slot, room, searched: false, contents: [],
+        }));
+      });
+
+      const stash = (room, item) => {
+        pick(room.furniture, rand).contents.push(item);
+      };
+
+      // The foyer is never locked — the player has to be able to start.
+      const lockable = shuffled(all.filter((r) => !(r.floor === 0 && r.index === 0)), rand);
+      const locked = lockable.slice(0, LOCKED_DOORS);
+      locked.forEach((room, k) => {
+        room.locked = true;
+        room.keyId = KEYS[k].id;
+      });
+
+      const openRooms = all.filter((r) => !r.locked);
+      locked.forEach((room, k) => {
+        const hosts = openRooms.concat(locked.slice(0, k));
+        stash(pick(hosts, rand), {
+          kind: 'key',
+          keyId: room.keyId,
+          name: KEYS[k].name,
+          colour: KEYS[k].colour,
+          opens: room.name,
+        });
+      });
+
+      shuffled(all, rand).slice(0, SUITS.length).forEach((room, i) => {
+        stash(room, { kind: 'card', suit: SUITS[i].id, name: SUITS[i].card });
+      });
+
+      shuffled(all, rand).slice(0, 4).forEach((room) => {
+        const id = pick(REWARD_POOL, rand);
+        stash(room, { kind: 'spirit', cardId: id, name: CARDS[id].name + ' card' });
+      });
+
+      shuffled(all, rand).slice(0, HAUNT_COUNT).forEach((room) => {
+        const dread = 18 + room.floor * 11;
+        room.haunt = { name: pick(GHOST_NAMES, rand), dread, max: dread, turn: 0 };
+      });
+
+      return { seed, floors };
+    }
+
+    /* ================================================================== *
+     * 3. the art
+     * ================================================================== */
+
+    function paint(w, h, draw) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      draw(ctx, w, h);
+      return canvas;
+    }
+
+    function texture(scene, key, w, h, draw) {
+      if (scene.textures.exists(key)) return;
+      scene.textures.addCanvas(key, paint(w, h, draw));
+    }
+
+    function wood(ctx, x, y, w, h, light, dark) {
+      const g = ctx.createLinearGradient(x, y, x + w, y);
+      g.addColorStop(0, dark);
+      g.addColorStop(0.35, light);
+      g.addColorStop(1, dark);
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(0,0,0,.25)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < h; i += 9) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + i + 0.5);
+        ctx.lineTo(x + w, y + i + 0.5);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,.55)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    }
+
+    /* --- the detective ------------------------------------------------ */
+
+    const SKIN = '#e3b48c';
+    const COAT = '#6d5138';
+    const COAT_DARK = '#4d3826';
+    const TWEED = '#8a6a45';
+
+    /**
+     * Sherlock Holmes crossed with a Monkey Island adventurer: deerstalker,
+     * high collar, calabash pipe, and a long tweed coat over sea boots.
+     * `phase` 0 is the idle pose; 1..4 are the walk cycle.
+     */
+    function drawHero(ctx, w, h, phase) {
+      const cx = w / 2;
+      const base = h - 2;
+      const swing = phase === 0 ? 0 : Math.sin((phase - 1) * Math.PI / 2);
+      const bob = phase === 0 ? 0 : Math.abs(swing) * 2;
+      const top = 26 - bob;
+
+      ctx.save();
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,.32)';
+      ctx.beginPath();
+      ctx.ellipse(cx, base, 26, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // legs and boots
+      const legs = [swing * 9, -swing * 9];
+      legs.forEach((offset) => {
+        ctx.strokeStyle = '#3a3040';
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(cx, base - 52 - bob);
+        ctx.lineTo(cx + offset, base - 8);
+        ctx.stroke();
+        ctx.fillStyle = '#241d29';
+        ctx.beginPath();
+        ctx.ellipse(cx + offset + Math.sign(offset || 1) * 3, base - 5, 10, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // long coat
+      ctx.fillStyle = COAT;
+      ctx.beginPath();
+      ctx.moveTo(cx - 17, top + 20);
+      ctx.lineTo(cx + 17, top + 20);
+      ctx.lineTo(cx + 23, base - 44);
+      ctx.lineTo(cx - 23, base - 44);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = COAT_DARK;
+      ctx.fillRect(cx - 3, top + 20, 6, base - 64 - top);
+
+      // waistcoat and collar
+      ctx.fillStyle = '#f0e9d8';
+      ctx.beginPath();
+      ctx.moveTo(cx - 8, top + 18);
+      ctx.lineTo(cx + 8, top + 18);
+      ctx.lineTo(cx, top + 34);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#7a2f3a';
+      ctx.fillRect(cx - 2, top + 22, 4, 12);
+
+      // arms
+      ctx.strokeStyle = COAT_DARK;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(cx - 15, top + 24);
+      ctx.lineTo(cx - 20 - swing * 6, top + 50);
+      ctx.moveTo(cx + 15, top + 24);
+      ctx.lineTo(cx + 20 + swing * 6, top + 50);
+      ctx.stroke();
+      ctx.fillStyle = SKIN;
+      ctx.beginPath(); ctx.arc(cx - 20 - swing * 6, top + 52, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 20 + swing * 6, top + 52, 4.5, 0, Math.PI * 2); ctx.fill();
+
+      // head
+      ctx.fillStyle = SKIN;
+      ctx.beginPath();
+      ctx.ellipse(cx, top + 2, 12, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#241d29';
+      ctx.beginPath(); ctx.arc(cx - 4, top, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 4, top, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#241d29';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, top - 5); ctx.lineTo(cx - 1, top - 4);
+      ctx.moveTo(cx + 6, top - 5); ctx.lineTo(cx + 1, top - 4);
+      ctx.stroke();
+
+      // pipe
+      ctx.strokeStyle = '#3b2a1c';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(cx + 8, top + 7);
+      ctx.quadraticCurveTo(cx + 17, top + 10, cx + 18, top + 4);
+      ctx.stroke();
+      ctx.fillStyle = '#2c1f14';
+      ctx.beginPath(); ctx.arc(cx + 19, top + 1, 4, 0, Math.PI * 2); ctx.fill();
+
+      // deerstalker
+      ctx.fillStyle = TWEED;
+      ctx.beginPath();
+      ctx.ellipse(cx, top - 10, 14, 10, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(cx - 20, top - 11, 40, 5);
+      ctx.fillStyle = '#6d5334';
+      ctx.fillRect(cx - 14, top - 8, 28, 3);
+      ctx.beginPath(); ctx.ellipse(cx - 13, top - 4, 5, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + 13, top - 4, 5, 6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    /* --- props -------------------------------------------------------- */
+
+    function drawDoor(ctx, w, h, open) {
+      ctx.fillStyle = '#120c16';
+      ctx.fillRect(0, 0, w, h);
+      if (open) {
+        const g = ctx.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, '#241a2f');
+        g.addColorStop(1, '#0a0710');
+        ctx.fillStyle = g;
+        ctx.fillRect(6, 6, w - 12, h - 6);
+        ctx.fillStyle = 'rgba(255, 214, 140, .10)';
+        ctx.beginPath();
+        ctx.moveTo(6, h); ctx.lineTo(w - 6, h); ctx.lineTo(w - 18, 40); ctx.lineTo(18, 40);
+        ctx.closePath(); ctx.fill();
+      } else {
+        wood(ctx, 5, 4, w - 10, h - 4, '#7c5330', '#402a17');
+        ctx.strokeStyle = 'rgba(0,0,0,.4)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(16, 22, w - 32, h * 0.34);
+        ctx.strokeRect(16, 22 + h * 0.42, w - 32, h * 0.34);
+        ctx.fillStyle = '#e6c168';
+        ctx.beginPath(); ctx.arc(w - 20, h * 0.55, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = '#2b1c33';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(3, 3, w - 6, h);
+    }
+
+    function drawPadlock(ctx, w, h) {
+      ctx.strokeStyle = '#cbb27a';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(w / 2, h * 0.42, w * 0.24, Math.PI, 0);
+      ctx.stroke();
+      ctx.fillStyle = '#8d7746';
+      ctx.fillRect(w * 0.16, h * 0.42, w * 0.68, h * 0.5);
+      ctx.fillStyle = '#3a2f1a';
+      ctx.beginPath(); ctx.arc(w / 2, h * 0.64, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function drawStairs(ctx, w, h) {
+      const steps = 9;
+      for (let i = 0; i < steps; i++) {
+        const sh = h / steps;
+        const y = h - (i + 1) * sh;
+        const inset = i * 8;
+        wood(ctx, inset, y, w - inset * 2, sh + 2, '#6a4a2c', '#38251a');
+      }
+      ctx.fillStyle = 'rgba(10,6,16,.85)';
+      ctx.fillRect(w * 0.32, 0, w * 0.36, h * 0.22);
+      ctx.strokeStyle = '#c8a05a';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(6, h - 6);
+      ctx.lineTo(w * 0.34, 12);
+      ctx.moveTo(w - 6, h - 6);
+      ctx.lineTo(w * 0.66, 12);
+      ctx.stroke();
+    }
+
+    function drawGhost(ctx, w, h) {
+      const cx = w / 2;
+      const g = ctx.createRadialGradient(cx, h * 0.42, 4, cx, h * 0.5, w * 0.6);
+      g.addColorStop(0, 'rgba(214,255,250,.95)');
+      g.addColorStop(0.55, 'rgba(120,214,204,.55)');
+      g.addColorStop(1, 'rgba(60,140,150,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(cx - w * 0.3, h * 0.95);
+      ctx.quadraticCurveTo(cx - w * 0.36, h * 0.3, cx, h * 0.08);
+      ctx.quadraticCurveTo(cx + w * 0.36, h * 0.3, cx + w * 0.3, h * 0.95);
+      ctx.quadraticCurveTo(cx, h * 0.82, cx - w * 0.3, h * 0.95);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(8,20,24,.85)';
+      ctx.beginPath(); ctx.ellipse(cx - w * 0.1, h * 0.34, w * 0.055, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + w * 0.1, h * 0.34, w * 0.055, h * 0.06, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, h * 0.52, w * 0.05, h * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function drawFurniture(ctx, w, h, kind) {
+      ctx.fillStyle = 'rgba(0,0,0,.3)';
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h - 3, w * 0.46, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      switch (kind) {
+        case 'wardrobe':
+          wood(ctx, 2, 6, w - 4, h - 10, '#6b4826', '#33210f');
+          ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(w / 2, 14); ctx.lineTo(w / 2, h - 16); ctx.stroke();
+          ctx.fillStyle = '#e0bd6c';
+          ctx.beginPath(); ctx.arc(w / 2 - 8, h * 0.5, 3.5, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(w / 2 + 8, h * 0.5, 3.5, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'bookshelf':
+          wood(ctx, 0, 4, w, h - 8, '#5c3f22', '#2a1b0d');
+          for (let s = 0; s < 4; s++) {
+            const y = 14 + s * ((h - 30) / 4);
+            ctx.fillStyle = '#1d1208';
+            ctx.fillRect(8, y, w - 16, (h - 30) / 4 - 4);
+            for (let b = 0, x = 12; x < w - 16; b++) {
+              const bw = 5 + ((s * 7 + b * 3) % 6);
+              ctx.fillStyle = ['#8c3b34', '#37613f', '#3c4a76', '#8a6a2a', '#5b3560'][(s + b) % 5];
+              ctx.fillRect(x, y + 4, bw, (h - 30) / 4 - 10);
+              x += bw + 2;
+            }
+          }
+          break;
+        case 'dresser':
+          wood(ctx, 0, 8, w, h - 12, '#6f4b28', '#35220f');
+          for (let d = 0; d < 3; d++) {
+            const y = 14 + d * ((h - 26) / 3);
+            ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 2;
+            ctx.strokeRect(8, y, w - 16, (h - 26) / 3 - 5);
+            ctx.fillStyle = '#e0bd6c';
+            ctx.beginPath(); ctx.arc(w / 2, y + (h - 26) / 6 - 3, 3, 0, Math.PI * 2); ctx.fill();
+          }
+          break;
+        case 'clock':
+          wood(ctx, 4, 20, w - 8, h - 24, '#5a3b20', '#2a1a0b');
+          ctx.fillStyle = '#f0e2bd';
+          ctx.beginPath(); ctx.arc(w / 2, 46, w * 0.3, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#241d29'; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 46); ctx.lineTo(w / 2 - 8, 42);
+          ctx.moveTo(w / 2, 46); ctx.lineTo(w / 2 + 3, 36);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(240,226,189,.25)';
+          ctx.fillRect(w / 2 - 5, 70, 10, h - 110);
+          ctx.fillStyle = '#e0bd6c';
+          ctx.beginPath(); ctx.arc(w / 2, h - 42, 9, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'chest':
+          wood(ctx, 2, 18, w - 4, h - 22, '#75512c', '#3a2512');
+          ctx.fillStyle = '#5a3d1f';
+          ctx.beginPath();
+          ctx.moveTo(2, 22); ctx.quadraticCurveTo(w / 2, -6, w - 2, 22);
+          ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#c8a05a'; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.moveTo(w * 0.28, 6); ctx.lineTo(w * 0.28, h - 6);
+          ctx.moveTo(w * 0.72, 6); ctx.lineTo(w * 0.72, h - 6); ctx.stroke();
+          break;
+        case 'table':
+          wood(ctx, 0, 22, w, 14, '#6b4826', '#33210f');
+          ctx.fillStyle = '#2f5a3c';
+          ctx.fillRect(6, 24, w - 12, 8);
+          ctx.strokeStyle = '#33210f'; ctx.lineWidth = 7;
+          ctx.beginPath();
+          ctx.moveTo(14, 36); ctx.lineTo(10, h - 6);
+          ctx.moveTo(w - 14, 36); ctx.lineTo(w - 10, h - 6);
+          ctx.stroke();
+          break;
+        case 'armchair':
+          ctx.fillStyle = '#5d2b34';
+          ctx.beginPath();
+          ctx.moveTo(10, h - 6); ctx.lineTo(10, 26);
+          ctx.quadraticCurveTo(w / 2, -4, w - 10, 26);
+          ctx.lineTo(w - 10, h - 6);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#7a3a45';
+          ctx.fillRect(4, h * 0.5, w - 8, h * 0.28);
+          ctx.fillStyle = '#3d1d24';
+          ctx.fillRect(0, h * 0.42, 12, h * 0.42);
+          ctx.fillRect(w - 12, h * 0.42, 12, h * 0.42);
+          break;
+        case 'painting':
+          wood(ctx, 0, 0, w, h, '#b08641', '#5c4018');
+          ctx.fillStyle = '#241f2e';
+          ctx.fillRect(10, 10, w - 20, h - 20);
+          ctx.fillStyle = '#4a4160';
+          ctx.beginPath(); ctx.ellipse(w / 2, h * 0.62, w * 0.22, h * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#d8c4a4';
+          ctx.beginPath(); ctx.ellipse(w / 2, h * 0.38, w * 0.12, h * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#141018';
+          ctx.beginPath(); ctx.arc(w / 2 - 5, h * 0.36, 2, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(w / 2 + 5, h * 0.36, 2, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'fireplace':
+          ctx.fillStyle = '#4a4450';
+          ctx.fillRect(0, 8, w, h - 12);
+          ctx.fillStyle = '#5b5462';
+          ctx.fillRect(-4, 0, w + 8, 14);
+          ctx.fillStyle = '#0d0910';
+          ctx.beginPath();
+          ctx.moveTo(w * 0.2, h - 8);
+          ctx.lineTo(w * 0.2, h * 0.46);
+          ctx.quadraticCurveTo(w / 2, h * 0.2, w * 0.8, h * 0.46);
+          ctx.lineTo(w * 0.8, h - 8);
+          ctx.closePath(); ctx.fill();
+          for (let b = 0; b < 6; b++) {
+            ctx.fillStyle = 'rgba(160,150,170,.25)';
+            ctx.fillRect(6 + (b % 3) * 20, 20 + Math.floor(b / 3) * 16, 16, 10);
+          }
+          break;
+        case 'barrel':
+          wood(ctx, 6, 6, w - 12, h - 10, '#7a5730', '#3c2713');
+          ctx.strokeStyle = '#9a9086'; ctx.lineWidth = 4;
+          [0.25, 0.6, 0.9].forEach((p) => {
+            ctx.beginPath(); ctx.moveTo(4, h * p); ctx.lineTo(w - 4, h * p); ctx.stroke();
+          });
+          ctx.fillStyle = '#1b2a2c';
+          ctx.beginPath(); ctx.ellipse(w / 2, 10, w * 0.36, 6, 0, 0, Math.PI * 2); ctx.fill();
+          break;
+        default:
+          wood(ctx, 0, 0, w, h, '#6b4826', '#33210f');
+      }
+    }
+
+    function drawKey(ctx, w, h, colour) {
+      ctx.strokeStyle = colour;
+      ctx.fillStyle = colour;
+      ctx.lineWidth = Math.max(3, w * 0.11);
+      ctx.beginPath();
+      ctx.arc(w * 0.26, h * 0.32, w * 0.17, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(w * 0.36, h * 0.44);
+      ctx.lineTo(w * 0.84, h * 0.86);
+      ctx.stroke();
+      ctx.fillRect(w * 0.6, h * 0.62, w * 0.08, h * 0.2);
+      ctx.fillRect(w * 0.72, h * 0.74, w * 0.08, h * 0.18);
+    }
+
+    function drawPlayingCard(ctx, w, h, suitId) {
+      const suit = SUITS.find((s) => s.id === suitId) || SUITS[0];
+      ctx.fillStyle = '#f6eeda';
+      ctx.strokeStyle = '#7a6540';
+      ctx.lineWidth = Math.max(2, w * 0.06);
+      const r = w * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(r, 1); ctx.lineTo(w - r, 1);
+      ctx.quadraticCurveTo(w - 1, 1, w - 1, r);
+      ctx.lineTo(w - 1, h - r);
+      ctx.quadraticCurveTo(w - 1, h - 1, w - r, h - 1);
+      ctx.lineTo(r, h - 1);
+      ctx.quadraticCurveTo(1, h - 1, 1, h - r);
+      ctx.lineTo(1, r);
+      ctx.quadraticCurveTo(1, 1, r, 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = suit.red ? '#b8433a' : '#171220';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold ' + Math.round(h * 0.42) + 'px Georgia, serif';
+      ctx.fillText(suit.glyph, w / 2, h * 0.52);
+      ctx.font = 'bold ' + Math.round(h * 0.16) + 'px Georgia, serif';
+      ctx.fillText(suit.id === 'joker' ? 'J' : 'A', w * 0.22, h * 0.16);
+    }
+
+    function drawSpiritCard(ctx, w, h) {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#5c3b8f');
+      g.addColorStop(1, '#231640');
+      ctx.fillStyle = g;
+      ctx.fillRect(1, 1, w - 2, h - 2);
+      ctx.strokeStyle = '#d0a8ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, w - 2, h - 2);
+      ctx.fillStyle = '#e8d6ff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold ' + Math.round(h * 0.4) + 'px Georgia, serif';
+      ctx.fillText('\u2735', w / 2, h * 0.52);
+    }
+
+    /* --- backdrops ---------------------------------------------------- */
+
+    const WALL_TONES = [
+      { top: '#3b2b3f', bottom: '#241a2c', trim: '#4c3624', paper: '#5a3f52' },
+      { top: '#2f3b47', bottom: '#1b2530', trim: '#3d3325', paper: '#3f5566' },
+      { top: '#3f3529', bottom: '#241d16', trim: '#3a2c1c', paper: '#5a4a34' },
+    ];
+
+    function paintWall(ctx, w, tone) {
+      const g = ctx.createLinearGradient(0, 0, 0, FLOOR_Y);
+      g.addColorStop(0, tone.top);
+      g.addColorStop(1, tone.bottom);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, FLOOR_Y);
+
+      // damask stripes
+      ctx.fillStyle = tone.paper;
+      ctx.globalAlpha = 0.35;
+      for (let x = 0; x < w; x += 46) ctx.fillRect(x, 34, 18, FLOOR_Y - 100);
+      ctx.globalAlpha = 1;
+
+      // ceiling beam and chair rail
+      ctx.fillStyle = '#150f1c';
+      ctx.fillRect(0, 0, w, 30);
+      ctx.fillStyle = tone.trim;
+      ctx.fillRect(0, 186, w, 8);
+      ctx.fillRect(0, 194, w, FLOOR_Y - 194);
+      ctx.fillStyle = 'rgba(0,0,0,.28)';
+      for (let x = 0; x < w; x += 58) ctx.fillRect(x, 198, 3, FLOOR_Y - 200);
+    }
+
+    function paintFloor(ctx, w, h) {
+      const g = ctx.createLinearGradient(0, FLOOR_Y, 0, h);
+      g.addColorStop(0, '#2d1f16');
+      g.addColorStop(1, '#57391f');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, FLOOR_Y, w, h - FLOOR_Y);
+      ctx.strokeStyle = 'rgba(0,0,0,.35)';
+      ctx.lineWidth = 1.5;
+      for (let y = FLOOR_Y + 12; y < h; y += 16) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+      for (let x = -h; x < w + h; x += 78) {
+        ctx.beginPath();
+        ctx.moveTo(x, FLOOR_Y);
+        ctx.lineTo(x - 40, h);
+        ctx.stroke();
+      }
+    }
+
+    function paintRunner(ctx, w, h) {
+      ctx.fillStyle = '#5c2230';
+      ctx.beginPath();
+      ctx.moveTo(0, h - 66); ctx.lineTo(w, h - 66); ctx.lineTo(w, h); ctx.lineTo(0, h);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#c8a05a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, h - 58); ctx.lineTo(w, h - 58);
+      ctx.moveTo(0, h - 10); ctx.lineTo(w, h - 10);
+      ctx.stroke();
+    }
+
+    function paintSconce(ctx, x) {
+      const g = ctx.createRadialGradient(x, 110, 6, x, 130, 150);
+      g.addColorStop(0, 'rgba(255,206,120,.55)');
+      g.addColorStop(1, 'rgba(255,206,120,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 150, 0, 300, FLOOR_Y);
+      ctx.fillStyle = '#c8a05a';
+      ctx.fillRect(x - 4, 108, 8, 26);
+      ctx.fillStyle = '#ffe08a';
+      ctx.beginPath();
+      ctx.ellipse(x, 100, 6, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* ================================================================== *
+     * 4. game state
+     * ================================================================== */
+
+    const state = {
+      mansion: null,
+      mode: 'boot',            // boot | play | duel | modal | over
+      location: null,          // { type: 'hall', floor } | { type: 'room', floor, index }
+      verb: 'Walk to',
+      pending: null,
+      hover: null,
+      inventory: [],
+      invPage: 0,
+      collected: new Set(),
+      deck: [],
+      nerve: MAX_NERVE,
+      timeLeft: GAME_SECONDS,
+      duel: null,
+    };
+
+    let scene = null;
+    let player = null;
+    let hotspotLayer = null;
+    let bubble = null;
+    let bubbleTimer = 0;
+    let walkTarget = null;
+    let walkThen = null;
+    let walkPhase = 0;
+    let walkClock = 0;
+
+    const dom = {};
+
+    const currentFloor = () => (state.location ? state.location.floor : 0);
+    const roomAt = (floor, index) => state.mansion.floors[floor].rooms[index];
+    const currentRoom = () =>
+      (state.location && state.location.type === 'room'
+        ? roomAt(state.location.floor, state.location.index)
+        : null);
+
+    const doorX = (i) => (i < 7 ? 260 + i * DOOR_SLOT : 2180 + (i - 7) * DOOR_SLOT);
+
+    /* ================================================================== *
+     * 5. the Phaser scene
+     * ================================================================== */
+
+    function buildTextures(s) {
+      for (let phase = 0; phase <= 4; phase++) {
+        texture(s, 'hero' + phase, 84, 152, (ctx, w, h) => drawHero(ctx, w, h, phase));
+      }
+      texture(s, 'door-closed', 108, 208, (ctx, w, h) => drawDoor(ctx, w, h, false));
+      texture(s, 'door-open', 108, 208, (ctx, w, h) => drawDoor(ctx, w, h, true));
+      texture(s, 'padlock', 34, 40, drawPadlock);
+      texture(s, 'stairs', 300, 220, drawStairs);
+      texture(s, 'ghost', 150, 190, drawGhost);
+      texture(s, 'item-key', 44, 44, (ctx, w, h) => drawKey(ctx, w, h, '#ffffff'));
+      texture(s, 'item-spirit', 34, 48, drawSpiritCard);
+      SUITS.forEach((suit) => {
+        texture(s, 'item-card-' + suit.id, 36, 50, (ctx, w, h) => drawPlayingCard(ctx, w, h, suit.id));
+      });
+
+      texture(s, 'vignette', VIEW_W, VIEW_H, (ctx, w, h) => {
+        const g = ctx.createRadialGradient(w / 2, h / 2, h * 0.35, w / 2, h / 2, h * 1.05);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(0,0,0,.72)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+      });
+
+      state.mansion.floors.forEach((floor) => {
+        const tone = WALL_TONES[floor.index];
+        texture(s, 'hall-' + floor.index, HALL_W, VIEW_H, (ctx, w, h) => {
+          paintWall(ctx, w, tone);
+          paintFloor(ctx, w, h);
+          paintRunner(ctx, w, h);
+          for (let x = 140; x < w; x += 420) paintSconce(ctx, x);
+        });
+        texture(s, 'room-' + floor.index, VIEW_W, VIEW_H, (ctx, w, h) => {
+          paintWall(ctx, w, tone);
+          paintFloor(ctx, w, h);
+          // a boarded window, for a little light
+          ctx.fillStyle = '#101a24';
+          ctx.fillRect(w * 0.66, 54, 150, 130);
+          ctx.fillStyle = 'rgba(150,190,220,.22)';
+          ctx.fillRect(w * 0.66 + 8, 62, 134, 114);
+          ctx.strokeStyle = '#2a1c12';
+          ctx.lineWidth = 10;
+          ctx.beginPath();
+          ctx.moveTo(w * 0.64, 84); ctx.lineTo(w * 0.66 + 158, 104);
+          ctx.moveTo(w * 0.64, 148); ctx.lineTo(w * 0.66 + 158, 128);
+          ctx.stroke();
+          paintSconce(ctx, 190);
+        });
+      });
+    }
+
+    class MansionScene extends Phaser.Scene {
+      constructor() { super('mansion'); }
+
+      create() {
+        scene = this;
+        buildTextures(this);
+
+        this.backdrop = this.add.image(0, 0, 'hall-0').setOrigin(0).setDepth(-100);
+        hotspotLayer = this.add.container(0, 0);
+
+        player = this.add.image(300, PLAYER_Y, 'hero0').setOrigin(0.5, 1).setDepth(500);
+
+        bubble = this.add.text(300, 200, '', {
+          fontFamily: 'Georgia, serif',
+          fontSize: '19px',
+          color: '#ffe9a8',
+          align: 'center',
+          wordWrap: { width: 520 },
+          stroke: '#000000',
+          strokeThickness: 4,
+        }).setOrigin(0.5, 1).setDepth(800).setVisible(false);
+
+        this.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(900);
+
+        this.cameras.main.setBounds(0, 0, HALL_W, VIEW_H);
+
+        this.input.on('pointerdown', (pointer, targets) => {
+          if (targets.length || state.mode !== 'play') return;
+          if (state.pending) { state.pending = null; renderSentence(); return; }
+          walkTo(pointer.worldX);
+        });
+
+        enterHall(0, 300);
+        document.body.dataset.boot = 'ready';
+      }
+
+      update(time, delta) {
+        stepPlayer(delta);
+        if (bubbleTimer > 0) {
+          bubbleTimer -= delta;
+          bubble.x = Phaser.Math.Clamp(player.x, this.cameras.main.scrollX + 180, this.cameras.main.scrollX + VIEW_W - 180);
+          bubble.y = player.y - 168;
+          if (bubbleTimer <= 0) bubble.setVisible(false);
+        }
+      }
+    }
+
+    function stepPlayer(delta) {
+      if (walkTarget === null) return;
+      const dx = walkTarget - player.x;
+      const step = WALK_SPEED * (delta / 1000);
+
+      if (Math.abs(dx) <= step) {
+        player.x = walkTarget;
+        walkTarget = null;
+        walkPhase = 0;
+        player.setTexture('hero0');
+        const then = walkThen;
+        walkThen = null;
+        if (then) then();
+        return;
+      }
+
+      player.x += Math.sign(dx) * step;
+      player.flipX = dx < 0;
+      walkClock += delta;
+      if (walkClock > 110) {
+        walkClock = 0;
+        walkPhase = (walkPhase % 4) + 1;
+        player.setTexture('hero' + walkPhase);
+      }
+    }
+
+    function walkTo(x, then) {
+      const limit = state.location.type === 'hall' ? HALL_W - 60 : VIEW_W - 50;
+      walkTarget = Phaser.Math.Clamp(x, 50, limit);
+      walkThen = then || null;
+    }
+
+    /**
+     * Walks over first when the target is far, so actions read as deliberate.
+     * A new order always cancels the pending one — otherwise ordering a
+     * nearby action while a walk is still running would fire both callbacks.
+     */
+    function approach(x, then) {
+      walkThen = null;
+      if (x === null || x === undefined || Math.abs(player.x - x) < 90) {
+        walkTarget = null;
+        if (x !== null && x !== undefined) player.flipX = x < player.x;
+        then();
+        return;
+      }
+      walkTo(x, then);
+    }
+
+    function say(text, seconds) {
+      if (!bubble) return;
+      bubble.setText(text).setVisible(true);
+      bubbleTimer = (seconds || Math.max(1.8, text.length * 0.055)) * 1000;
+    }
+
+    /* --- hotspots ----------------------------------------------------- */
+
+    function addHotspot(image, descriptor) {
+      image.setInteractive({ useHandCursor: true });
+      image.on('pointerover', () => { state.hover = descriptor; renderSentence(); });
+      image.on('pointerout', () => { if (state.hover === descriptor) { state.hover = null; renderSentence(); } });
+      image.on('pointerdown', () => activate(descriptor));
+      hotspotLayer.add(image);
+      return image;
+    }
+
+    function label(text, x, y, colour) {
+      const t = scene.add.text(x, y, text, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '15px',
+        color: colour || '#e8d9b5',
+        stroke: '#000000',
+        strokeThickness: 4,
+      }).setOrigin(0.5, 1).setDepth(300);
+      hotspotLayer.add(t);
+      return t;
+    }
+
+    function clearScene() {
+      hotspotLayer.removeAll(true);
+      state.hover = null;
+    }
+
+    /* --- the hallway -------------------------------------------------- */
+
+    function enterHall(floor, x) {
+      state.location = { type: 'hall', floor };
+      clearScene();
+      scene.backdrop.setTexture('hall-' + floor);
+      scene.cameras.main.setBounds(0, 0, HALL_W, VIEW_H);
+      scene.cameras.main.startFollow(player, false, 0.14, 1, 0, 0);
+      player.x = Phaser.Math.Clamp(x, 60, HALL_W - 60);
+      walkTarget = null;
+
+      const rooms = state.mansion.floors[floor].rooms;
+      rooms.forEach((room, i) => {
+        const x0 = doorX(i);
+        const door = scene.add.image(x0, 300, room.open ? 'door-open' : 'door-closed')
+          .setOrigin(0.5, 1)
+          .setDepth(100);
+        door.setData('room', room);
+
+        addHotspot(door, {
+          type: 'door',
+          name: 'door to the ' + room.name,
+          x: x0,
+          room,
+          sprite: door,
+        });
+
+        label(room.name, x0, 66, room.locked ? '#e0a2a2' : '#e8d9b5');
+        label('No. ' + (i + 1 + floor * 15), x0, 88, '#9d8fbb');
+
+        if (room.locked) {
+          const lock = scene.add.image(x0 + 34, 190, 'padlock').setDepth(120);
+          hotspotLayer.add(lock);
+          door.setData('lock', lock);
+        }
+      });
+
+      const stairs = scene.add.image(STAIR_X, 306, 'stairs').setOrigin(0.5, 1).setDepth(90);
+      hotspotLayer.add(stairs);
+      if (floor < 2) {
+        addHotspot(stairs, { type: 'stairs-up', name: 'staircase up', x: STAIR_X - 130 });
+        label('Up to the ' + FLOOR_LABELS[floor + 1] + ' floor', STAIR_X, 78, '#c8e6d6');
+      } else {
+        stairs.setAlpha(0.85);
+        label('The roof is not an exit', STAIR_X, 78, '#8d8399');
+      }
+
+      if (floor > 0) {
+        const down = scene.add.zone(STAIR_X + 190, 330, 170, 70).setOrigin(0.5);
+        down.setDepth(95);
+        addHotspot(down, { type: 'stairs-down', name: 'stairs down', x: STAIR_X + 190 });
+        label('Down to the ' + FLOOR_LABELS[floor - 1] + ' floor', STAIR_X + 190, 286, '#c8e6d6');
+      } else {
+        const front = scene.add.zone(70, 200, 120, 200).setOrigin(0.5);
+        addHotspot(front, { type: 'front-door', name: 'front door', x: 150 });
+        label('Front door', 90, 78, '#8d8399');
+      }
+
+      updateHud();
+      renderSentence();
+    }
+
+    /* --- a room ------------------------------------------------------- */
+
+    function enterRoom(room) {
+      state.location = { type: 'room', floor: room.floor, index: room.index };
+      clearScene();
+      scene.backdrop.setTexture('room-' + room.floor);
+      scene.cameras.main.stopFollow();
+      scene.cameras.main.setBounds(0, 0, VIEW_W, VIEW_H);
+      scene.cameras.main.setScroll(0, 0);
+      player.x = 190;
+      player.flipX = false;
+      walkTarget = null;
+
+      const exit = scene.add.image(70, 300, 'door-open').setOrigin(0.5, 1).setDepth(100);
+      addHotspot(exit, { type: 'exit', name: 'way back to the hallway', x: 150 });
+      label('Hallway', 70, 92, '#c8e6d6');
+      label(room.name, VIEW_W / 2, 46, '#f0e2bd');
+
+      const spread = (VIEW_W - 300) / room.furniture.length;
+      room.furniture.forEach((piece, i) => {
+        const def = FURNITURE[piece.kind];
+        const x = 260 + spread * (i + 0.5);
+        const y = def.hangs ? 180 : 322;
+        const key = 'furn-' + piece.kind;
+        texture(scene, key, def.w, def.h, (ctx, w, h) => drawFurniture(ctx, w, h, piece.kind));
+        const image = scene.add.image(x, y, key)
+          .setOrigin(0.5, def.hangs ? 0.5 : 1)
+          .setDepth(def.hangs ? 60 : 200 + i);
+        addHotspot(image, { type: 'furniture', name: def.name, x, piece, sprite: image });
+      });
+
+      renderGround(room);
+
+      if (room.haunt && room.haunt.dread > 0) {
+        const ghost = scene.add.image(VIEW_W - 170, 250, 'ghost').setOrigin(0.5).setDepth(400).setAlpha(0.9);
+        addHotspot(ghost, { type: 'ghost', name: room.haunt.name, x: VIEW_W - 300, room });
+        scene.tweens.add({ targets: ghost, y: 232, alpha: 0.65, duration: 1600, yoyo: true, repeat: -1 });
+        say('Something cold is in here with me.');
+      } else if (!room.visited) {
+        say(FURNITURE[room.furniture[0].kind].look);
+      }
+
+      room.visited = true;
+      updateHud();
+      renderSentence();
+    }
+
+    function renderGround(room) {
+      // ground sprites are rebuilt wholesale whenever the pile changes
+      hotspotLayer.list
+        .filter((child) => child.getData && child.getData('ground'))
+        .forEach((child) => child.destroy());
+
+      room.ground.forEach((item, i) => {
+        const x = 300 + i * 74;
+        const key = item.kind === 'key' ? 'item-key'
+          : item.kind === 'card' ? 'item-card-' + item.suit
+          : 'item-spirit';
+        const image = scene.add.image(x, 372, key).setDepth(450).setScale(1.25);
+        image.setData('ground', true);
+        if (item.kind === 'key') image.setTint(Phaser.Display.Color.HexStringToColor(item.colour).color);
+        scene.tweens.add({ targets: image, y: 364, duration: 900, yoyo: true, repeat: -1 });
+        addHotspot(image, { type: 'item', name: item.name, x, item, room });
+      });
+    }
+
+    /* ================================================================== *
+     * 6. the verb interface
+     * ================================================================== */
+
+    function preposition(verb) {
+      if (verb === 'Use') return ' with ';
+      if (verb === 'Give') return ' to ';
+      return '';
+    }
+
+    function renderSentence() {
+      let line = state.verb;
+      if (state.pending) {
+        line += ' ' + state.pending.name + preposition(state.verb);
+        if (state.hover) line += state.hover.name;
+      } else if (state.hover) {
+        line += ' ' + state.hover.name;
+      }
+      dom.sentence.textContent = line;
+    }
+
+    function setVerb(verb) {
+      state.verb = verb;
+      state.pending = null;
+      dom.verbs.querySelectorAll('.verb').forEach((b) => {
+        b.dataset.active = String(b.dataset.verb === verb);
+      });
+      renderSentence();
+    }
+
+    function activate(descriptor) {
+      if (state.mode !== 'play') return;
+
+      if (state.pending) {
+        const first = state.pending;
+        state.pending = null;
+        pairAction(state.verb, first, descriptor);
+        return;
+      }
+
+      if (state.verb === 'Use' || state.verb === 'Give') {
+        state.pending = descriptor;
+        renderSentence();
+        renderInventory();
+        return;
+      }
+
+      singleAction(state.verb, descriptor);
+    }
+
+    function blockedByHaunt(room) {
+      if (room && room.haunt && room.haunt.dread > 0) {
+        startDuel(room);
+        return true;
+      }
+      return false;
+    }
+
+    function singleAction(verb, target) {
+      const room = currentRoom();
+
+      // The haunt interrupts everything in its room, whatever you clicked.
+      if (room && target.type !== 'exit' && blockedByHaunt(room)) return;
+
+      switch (target.type) {
+        case 'door': return doorAction(verb, target);
+        case 'stairs-up':
+          if (verb === 'Look at') return say('Stairs, worn in the middle by a century of feet.');
+          return approach(target.x, () => enterHall(currentFloor() + 1, STAIR_X + 150));
+        case 'stairs-down':
+          if (verb === 'Look at') return say('They go down into the dark, which is where I came from.');
+          return approach(target.x, () => enterHall(currentFloor() - 1, STAIR_X - 150));
+        case 'front-door':
+          return say(state.collected.size === SUITS.length
+            ? 'And out I go.'
+            : 'I am not leaving without all five cards.');
+        case 'exit':
+          if (verb === 'Look at') return say('The hallway, and fourteen more doors on this floor.');
+          return approach(target.x, () => enterHall(currentFloor(), doorX(state.location.index)));
+        case 'furniture': return furnitureAction(verb, target);
+        case 'item': return itemAction(verb, target);
+        case 'ghost': return startDuel(target.room);
+        case 'inv': return inventoryAction(verb, target);
+        default: return say('Nothing happens.');
+      }
+    }
+
+    function doorAction(verb, target) {
+      const room = target.room;
+      const refresh = () => {
+        target.sprite.setTexture(room.open ? 'door-open' : 'door-closed');
+        const lock = target.sprite.getData('lock');
+        if (lock && !room.locked) lock.destroy();
+      };
+
+      switch (verb) {
+        case 'Look at':
+          return say('A panelled door to the ' + room.name + '.'
+            + (room.locked ? ' The keyhole is cold and the lock is stubborn.' : ''));
+        case 'Open':
+          if (room.locked) return approach(target.x, () => say('Locked. I need the right key.'));
+          return approach(target.x, () => { room.open = true; refresh(); say('Open.'); });
+        case 'Close':
+          return approach(target.x, () => { room.open = false; refresh(); say('Shut.'); });
+        case 'Walk to':
+          if (room.locked) return approach(target.x, () => say('Locked. I need the right key.'));
+          return approach(target.x, () => { room.open = true; refresh(); enterRoom(room); });
+        case 'Push':
+        case 'Pull':
+          if (room.locked) return say('It does not budge. Locks rarely respond to enthusiasm.');
+          return approach(target.x, () => { room.open = true; refresh(); enterRoom(room); });
+        case 'Pick up': return say('The door is rather attached to the house.');
+        case 'Talk to': return say('Doors are poor conversationalists. This one especially.');
+        default: return say('That achieves nothing.');
+      }
+    }
+
+    function furnitureAction(verb, target) {
+      const piece = target.piece;
+      const def = FURNITURE[piece.kind];
+
+      if (verb === 'Look at') return say(def.look);
+      if (verb === 'Talk to') return say('I have talked to furniture before. It ended a case badly.');
+      if (verb === 'Pick up') return say('Far too heavy, and I have only two hands.');
+
+      // Open, Push, Pull all count as searching it.
+      return approach(target.x, () => {
+        if (piece.searched) {
+          return say(piece.contents.length
+            ? 'Still something in there.'
+            : 'I have already been through this one.');
+        }
+        piece.searched = true;
+
+        if (!piece.contents.length) {
+          return say(EMPTY_SEARCH[(piece.slot + piece.room.index) % EMPTY_SEARCH.length]);
+        }
+
+        const found = piece.contents.splice(0, piece.contents.length);
+        piece.room.ground.push(...found);
+        renderGround(piece.room);
+        say('Well now. ' + found.map((f) => 'A ' + f.name).join(', and ') + '.');
+      });
+    }
+
+    function itemAction(verb, target) {
+      if (verb === 'Look at') return say(describeItem(target.item));
+      if (verb !== 'Pick up') return say('Better to simply pick it up.');
+
+      return approach(target.x, () => {
+        const room = target.room;
+        if (!room.ground.includes(target.item)) return;
+        room.ground = room.ground.filter((i) => i !== target.item);
+        takeItem(target.item);
+        renderGround(room);
+      });
+    }
+
+    function describeItem(item) {
+      if (item.kind === 'key') return 'A ' + item.name + '. Something in this house wants opening.';
+      if (item.kind === 'card') return 'The ' + item.name + '. One of the five.';
+      return 'A card for my deck: ' + CARDS[item.cardId].text;
+    }
+
+    function takeItem(item) {
+      if (item.kind === 'card') {
+        state.collected.add(item.suit);
+        state.inventory.push(item);
+        say('The ' + item.name + '. ' + (SUITS.length - state.collected.size) + ' to go.');
+        updateHud();
+        if (state.collected.size === SUITS.length) finish(true);
+        return;
+      }
+
+      if (item.kind === 'spirit') {
+        state.deck.push(item.cardId);
+        say(CARDS[item.cardId].name + ' goes into my deck.');
+        updateHud();
+        return;
+      }
+
+      state.inventory.push(item);
+      say('A ' + item.name + '. Taken.');
+      updateHud();
+    }
+
+    function inventoryAction(verb, target) {
+      const item = target.item;
+      if (verb === 'Look at') return say(describeItem(item));
+      if (verb === 'Pick up') return say('It is already in my coat.');
+      if (verb === 'Talk to') return say('Talking to my own pockets is a bad sign.');
+      if (verb === 'Open' && item.kind === 'card') return say('It is a playing card. It does not open.');
+      return say('Nothing comes of that.');
+    }
+
+    /** Use X with Y / Give X to Y — accepted in either click order. */
+    function pairAction(verb, a, b) {
+      if (verb === 'Give') {
+        return say(b.type === 'ghost'
+          ? 'It has no hands worth speaking of.'
+          : 'There is nobody here to give it to.');
+      }
+
+      const inv = a.type === 'inv' ? a : b.type === 'inv' ? b : null;
+      const other = inv === a ? b : a;
+
+      if (!inv) return say('Those two have nothing to say to each other.');
+
+      if (inv.item.kind === 'key' && other.type === 'door') {
+        const room = other.room;
+        return approach(other.x, () => {
+          if (!room.locked) return say('That door is already open to me.');
+          if (room.keyId !== inv.item.keyId) return say('Wrong key. It will not even go in.');
+          room.locked = false;
+          room.open = true;
+          state.inventory = state.inventory.filter((i) => i !== inv.item);
+          other.sprite.setTexture('door-open');
+          const lock = other.sprite.getData('lock');
+          if (lock) lock.destroy();
+          say('The lock gives. The ' + room.name + ' is open.');
+          updateHud();
+        });
+      }
+
+      if (inv.item.kind === 'key') return say('The key is for a door, not for that.');
+      if (inv.item.kind === 'card') return say('I would rather not bend it.');
+      return say('That does not work.');
+    }
+
+    /* --- inventory + hud ---------------------------------------------- */
+
+    const INV_SLOTS = 8;
+
+    function renderInventory() {
+      const pages = Math.max(1, Math.ceil(state.inventory.length / INV_SLOTS));
+      state.invPage = Math.min(state.invPage, pages - 1);
+      const start = state.invPage * INV_SLOTS;
+
+      dom.invGrid.innerHTML = '';
+      for (let i = 0; i < INV_SLOTS; i++) {
+        const item = state.inventory[start + i];
+        const slot = document.createElement('button');
+        slot.type = 'button';
+        slot.className = 'inv-slot' + (item ? '' : ' is-empty');
+        if (!item) { slot.disabled = true; dom.invGrid.appendChild(slot); continue; }
+
+        slot.dataset.testid = 'inventory-item';
+        slot.dataset.itemKind = item.kind;
+        const icon = item.kind === 'key'
+          ? paint(30, 30, (ctx, w, h) => drawKey(ctx, w, h, item.colour))
+          : paint(24, 34, (ctx, w, h) => drawPlayingCard(ctx, w, h, item.suit));
+        slot.appendChild(icon);
+        const name = document.createElement('span');
+        name.textContent = item.name;
+        slot.appendChild(name);
+
+        const descriptor = { type: 'inv', name: item.name, x: null, item };
+        slot.addEventListener('mouseenter', () => { state.hover = descriptor; renderSentence(); });
+        slot.addEventListener('mouseleave', () => { state.hover = null; renderSentence(); });
+        slot.addEventListener('click', () => activate(descriptor));
+        if (state.pending && state.pending.item === item) slot.dataset.selected = 'true';
+
+        dom.invGrid.appendChild(slot);
+      }
+
+      dom.invUp.disabled = state.invPage === 0;
+      dom.invDown.disabled = state.invPage >= pages - 1;
+    }
+
+    function updateHud() {
+      dom.floor.textContent = FLOOR_LABELS[currentFloor()];
+      dom.cardsCount.textContent = state.collected.size + ' / ' + SUITS.length;
+      dom.nerveText.textContent = state.nerve + ' / ' + MAX_NERVE;
+      dom.nerveBar.style.width = Math.max(0, (state.nerve / MAX_NERVE) * 100) + '%';
+
+      dom.suits.querySelectorAll('.suit').forEach((el) => {
+        el.dataset.found = String(state.collected.has(el.dataset.suit));
+      });
+
+      document.body.dataset.floor = String(currentFloor());
+      document.body.dataset.cards = String(state.collected.size);
+      document.body.dataset.location = state.location
+        ? (state.location.type === 'room' ? currentRoom().name : 'Hallway')
+        : '';
+
+      renderInventory();
+      renderTimer();
+    }
+
+    function renderTimer() {
+      const m = Math.floor(state.timeLeft / 60);
+      const s = state.timeLeft % 60;
+      dom.timer.textContent = m + ':' + String(s).padStart(2, '0');
+      dom.timer.dataset.low = String(state.timeLeft <= 120);
+    }
+
+    /* ================================================================== *
+     * 7. the deck-building duel
+     * ================================================================== */
+
+    function shuffleDeck(list) {
+      const out = list.slice();
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out;
+    }
+
+    function startDuel(room) {
+      state.mode = 'duel';
+      state.pending = null;
+      state.duel = {
+        room,
+        haunt: room.haunt,
+        draw: shuffleDeck(state.deck),
+        hand: [],
+        discard: [],
+        guard: 0,
+        energy: 0,
+        weaken: 0,
+      };
+      dom.duel.dataset.open = 'true';
+      dom.duelName.textContent = room.haunt.name;
+      beginDuelTurn('It rises out of the wallpaper.');
+    }
+
+    function drawCards(n) {
+      const d = state.duel;
+      for (let i = 0; i < n; i++) {
+        if (!d.draw.length) {
+          if (!d.discard.length) break;
+          d.draw = shuffleDeck(d.discard);
+          d.discard = [];
+        }
+        d.hand.push(d.draw.pop());
+      }
+    }
+
+    function beginDuelTurn(log) {
+      const d = state.duel;
+      d.discard.push(...d.hand);
+      d.hand = [];
+      d.energy = 3;
+      d.guard = 0;
+      drawCards(5);
+      d.haunt.turn += 1;
+      d.intent = hauntIntent(d);
+      renderDuel(log);
+    }
+
+    function hauntIntent(d) {
+      const floor = d.room.floor;
+      const heavy = d.haunt.turn % 3 === 0;
+      return {
+        heavy,
+        damage: Math.max(0, (heavy ? 9 : 5) + floor * 2 - d.weaken),
+      };
+    }
+
+    function renderDuel(log) {
+      const d = state.duel;
+      dom.duelDread.style.width = Math.max(0, (d.haunt.dread / d.haunt.max) * 100) + '%';
+      dom.duelIntent.textContent = d.intent.heavy
+        ? 'Intent: a shrieking blow for ' + d.intent.damage
+        : 'Intent: a cold touch for ' + d.intent.damage;
+      dom.duelNerve.textContent = state.nerve;
+      dom.duelGuard.textContent = d.guard;
+      dom.duelEnergy.textContent = d.energy;
+      dom.duelDraw.textContent = d.draw.length;
+      dom.duelDiscard.textContent = d.discard.length;
+      if (log) dom.duelLog.textContent = log;
+
+      dom.duelHand.innerHTML = '';
+      d.hand.forEach((id, index) => {
+        const def = CARDS[id];
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'card';
+        card.dataset.testid = 'hand-card';
+        card.dataset.card = id;
+        card.disabled = def.cost > d.energy;
+        card.innerHTML =
+          '<span class="cost">' + def.cost + '</span>'
+          + '<span class="cname"></span>'
+          + '<span class="ctext"></span>';
+        card.querySelector('.cname').textContent = def.name;
+        card.querySelector('.ctext').textContent = def.text;
+        card.addEventListener('click', () => playCard(index));
+        dom.duelHand.appendChild(card);
+      });
+    }
+
+    function playCard(index) {
+      const d = state.duel;
+      const id = d.hand[index];
+      const def = CARDS[id];
+      if (!def || def.cost > d.energy) return;
+
+      d.hand.splice(index, 1);
+      d.discard.push(id);
+      d.energy -= def.cost;
+
+      if (def.energy) d.energy += def.energy;
+      if (def.block) d.guard += def.block;
+      if (def.heal) state.nerve = Math.min(MAX_NERVE, state.nerve + def.heal);
+      if (def.weaken) { d.weaken += def.weaken; d.intent = hauntIntent(d); }
+      if (def.draw) drawCards(def.draw);
+      if (def.dmg) d.haunt.dread = Math.max(0, d.haunt.dread - def.dmg);
+
+      updateHud();
+
+      if (d.haunt.dread <= 0) return winDuel();
+      renderDuel(def.name + ' played.');
+    }
+
+    function endDuelTurn() {
+      const d = state.duel;
+      if (!d) return;
+      const damage = Math.max(0, d.intent.damage - d.guard);
+      state.nerve -= damage;
+      d.weaken = 0;
+      updateHud();
+
+      if (state.nerve <= 0) return loseDuel();
+      beginDuelTurn(damage
+        ? 'It strikes for ' + damage + '.'
+        : 'Your guard holds. Nothing gets through.');
+    }
+
+    function winDuel() {
+      const d = state.duel;
+      d.room.haunt = null;
+      dom.duel.dataset.open = 'false';
+      state.nerve = Math.min(MAX_NERVE, state.nerve + 4);
+      updateHud();
+
+      const offer = shuffleDeck(REWARD_POOL).slice(0, 3);
+      openModal('Banished', d.haunt.name + ' unravels. Take one card into your deck.', [
+        ...offer.map((id) => ({
+          label: CARDS[id].name + ' \u2014 ' + CARDS[id].text,
+          testid: 'reward',
+          onClick: () => {
+            state.deck.push(id);
+            closeModal();
+            resumeAfterDuel();
+            say(CARDS[id].name + ' joins the deck.');
+          },
+        })),
+        { label: 'Take nothing', onClick: () => { closeModal(); resumeAfterDuel(); } },
+      ]);
+    }
+
+    function loseDuel() {
+      const d = state.duel;
+      d.haunt.dread = d.haunt.max;
+      d.haunt.turn = 0;
+      state.nerve = MAX_NERVE;
+      state.timeLeft = Math.max(0, state.timeLeft - DEFEAT_PENALTY);
+      dom.duel.dataset.open = 'false';
+      const room = d.room;
+      state.duel = null;
+      updateHud();
+
+      openModal('Thrown out', 'Your nerve breaks and the house pushes you back into the hallway. '
+        + DEFEAT_PENALTY / 60 + ' minutes gone.', [
+        {
+          label: 'Get up',
+          testid: 'duel-lost-ok',
+          onClick: () => {
+            closeModal();
+            state.mode = 'play';
+            enterHall(room.floor, doorX(room.index));
+          },
+        },
+      ]);
+    }
+
+    function resumeAfterDuel() {
+      const room = state.duel ? state.duel.room : currentRoom();
+      state.duel = null;
+      state.mode = 'play';
+      if (room) enterRoom(room);
+    }
+
+    /* ================================================================== *
+     * 8. modals, timer, boot
+     * ================================================================== */
+
+    function openModal(title, body, actions) {
+      state.mode = state.mode === 'over' ? 'over' : 'modal';
+      dom.modalTitle.textContent = title;
+      dom.modalBody.innerHTML = '';
+      if (typeof body === 'string') {
+        const p = document.createElement('p');
+        p.className = 'text-secondary';
+        p.textContent = body;
+        dom.modalBody.appendChild(p);
+      } else if (body) {
+        dom.modalBody.appendChild(body);
+      }
+      dom.modalActions.innerHTML = '';
+      (actions || []).forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'tiny-btn';
+        button.textContent = action.label;
+        if (action.testid) button.dataset.testid = action.testid;
+        button.addEventListener('click', action.onClick);
+        dom.modalActions.appendChild(button);
+      });
+      dom.modal.dataset.open = 'true';
+    }
+
+    function closeModal() {
+      dom.modal.dataset.open = 'false';
+      if (state.mode === 'modal') state.mode = 'play';
+    }
+
+    function finish(won) {
+      state.mode = 'over';
+      dom.duel.dataset.open = 'false';
+      document.body.dataset.result = won ? 'won' : 'lost';
+      openModal(
+        won ? 'A full hand' : 'The clock wins',
+        won
+          ? 'Clubs, Spades, Hearts, Diamonds and the Joker, all five in my coat, with '
+            + dom.timer.textContent + ' still on the clock. The front door opens without being asked.'
+          : 'Thirty minutes gone, and only ' + state.collected.size
+            + ' of the five cards found. Blackthorn Manor keeps what it has.',
+        [{ label: 'Search a different manor', testid: 'play-again', onClick: () => newGame() }],
+      );
+      dom.modal.dataset.result = won ? 'won' : 'lost';
+    }
+
+    function tick() {
+      if (state.mode !== 'play' && state.mode !== 'duel' && state.mode !== 'modal') return;
+      state.timeLeft -= 1;
+      if (state.timeLeft <= 0) {
+        state.timeLeft = 0;
+        renderTimer();
+        finish(false);
+        return;
+      }
+      renderTimer();
+    }
+
+    function newGame() {
+      closeModal();
+      dom.duel.dataset.open = 'false';
+      delete dom.modal.dataset.result;
+      delete document.body.dataset.result;
+
+      state.mansion = buildMansion((Math.random() * 0xffffffff) >>> 0);
+      state.inventory = [];
+      state.invPage = 0;
+      state.collected = new Set();
+      state.deck = STARTING_DECK.slice();
+      state.nerve = MAX_NERVE;
+      state.timeLeft = GAME_SECONDS;
+      state.duel = null;
+      state.pending = null;
+      state.mode = 'play';
+      document.body.dataset.mode = 'play';
+
+      if (scene) {
+        buildTextures(scene);
+        enterHall(0, 300);
+        say('Blackthorn Manor. Five cards, thirty minutes, and something on the stairs.', 4);
+      }
+    }
+
+    function showDeck() {
+      const wrap = document.createElement('div');
+      const counts = state.deck.reduce((acc, id) => {
+        acc[id] = (acc[id] || 0) + 1;
+        return acc;
+      }, {});
+      const list = document.createElement('div');
+      list.className = 'deck-list';
+      Object.keys(counts).forEach((id) => {
+        const pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.dataset.testid = 'deck-entry';
+        pill.textContent = counts[id] + '\u00d7 ' + CARDS[id].name + ' \u2014 ' + CARDS[id].text;
+        list.appendChild(pill);
+      });
+      const total = document.createElement('p');
+      total.className = 'text-secondary';
+      total.textContent = state.deck.length + ' cards. Banish haunts to add more.';
+      wrap.appendChild(total);
+      wrap.appendChild(list);
+      openModal('Your deck', wrap, [{ label: 'Close', onClick: closeModal }]);
+    }
+
+    function showHelp() {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = [
+        '<p class="text-secondary">Pick a verb, then click what you mean. Clicking the floor walks there.</p>',
+        '<ul class="text-secondary small">',
+        '<li><b>Open</b>, <b>Push</b> or <b>Pull</b> a piece of furniture to search it.</li>',
+        '<li><b>Use</b> a key from your inventory <b>with</b> a locked door to open it.</li>',
+        '<li>Six doors are locked. Every key is hidden somewhere you can already reach.</li>',
+        '<li>Eight rooms hold a haunt. Touching anything in the room starts a card duel &mdash;',
+        'spend focus, deal dread, keep your nerve above zero. Banishing one adds a card to your deck.</li>',
+        '<li>Find all five aces &mdash; clubs, spades, hearts, diamonds and the joker &mdash; before the clock runs out.</li>',
+        '</ul>',
+      ].join('');
+      openModal('How to play', wrap, [{ label: 'Back to it', onClick: closeModal }]);
+    }
+
+    /* --- wiring ------------------------------------------------------- */
+
+    function bindDom() {
+      dom.sentence = document.getElementById('sentence');
+      dom.verbs = document.getElementById('verbs');
+      dom.invGrid = document.getElementById('inv-grid');
+      dom.invUp = document.getElementById('inv-up');
+      dom.invDown = document.getElementById('inv-down');
+      dom.floor = document.getElementById('floor');
+      dom.timer = document.getElementById('timer');
+      dom.nerveText = document.getElementById('nerve-text');
+      dom.nerveBar = document.getElementById('nerve-bar');
+      dom.cardsCount = document.getElementById('cards-count');
+      dom.suits = document.getElementById('suits');
+      dom.duel = document.getElementById('duel');
+      dom.duelName = document.getElementById('duel-name');
+      dom.duelIntent = document.getElementById('duel-intent');
+      dom.duelDread = document.getElementById('duel-dread');
+      dom.duelNerve = document.getElementById('duel-nerve');
+      dom.duelGuard = document.getElementById('duel-guard');
+      dom.duelEnergy = document.getElementById('duel-energy');
+      dom.duelDraw = document.getElementById('duel-draw');
+      dom.duelDiscard = document.getElementById('duel-discard');
+      dom.duelHand = document.getElementById('duel-hand');
+      dom.duelLog = document.getElementById('duel-log');
+      dom.modal = document.getElementById('modal');
+      dom.modalTitle = document.getElementById('modal-title');
+      dom.modalBody = document.getElementById('modal-body');
+      dom.modalActions = document.getElementById('modal-actions');
+
+      VERBS.forEach((verb) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'verb';
+        button.dataset.verb = verb;
+        button.dataset.testid = 'verb';
+        button.textContent = verb;
+        button.addEventListener('click', () => setVerb(verb));
+        dom.verbs.appendChild(button);
+      });
+
+      SUITS.forEach((suit) => {
+        const el = document.createElement('span');
+        el.className = 'suit';
+        el.dataset.suit = suit.id;
+        el.dataset.red = String(suit.red);
+        el.dataset.found = 'false';
+        el.textContent = suit.glyph;
+        dom.suits.appendChild(el);
+      });
+
+      dom.invUp.addEventListener('click', () => { state.invPage = Math.max(0, state.invPage - 1); renderInventory(); });
+      dom.invDown.addEventListener('click', () => { state.invPage += 1; renderInventory(); });
+      document.getElementById('btn-deck').addEventListener('click', showDeck);
+      document.getElementById('btn-help').addEventListener('click', showHelp);
+      document.getElementById('btn-restart').addEventListener('click', newGame);
+      document.getElementById('duel-end').addEventListener('click', endDuelTurn);
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && state.pending) { state.pending = null; renderSentence(); }
+      });
+
+      const ghostPortrait = document.getElementById('duel-ghost');
+      const ctx = ghostPortrait.getContext('2d');
+      drawGhost(ctx, ghostPortrait.width, ghostPortrait.height);
+
+      setVerb('Walk to');
+      renderInventory();
+    }
+
+    function boot() {
+      bindDom();
+      state.mansion = buildMansion((Math.random() * 0xffffffff) >>> 0);
+      state.deck = STARTING_DECK.slice();
+      state.mode = 'play';
+      document.body.dataset.mode = 'play';
+
+      new Phaser.Game({
+        type: Phaser.AUTO,
+        parent: 'stage',
+        width: VIEW_W,
+        height: VIEW_H,
+        backgroundColor: '#06050a',
+        render: { antialias: true, pixelArt: false, roundPixels: true },
+        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scene: MansionScene,
+      });
+
+      setInterval(tick, 1000);
+      setTimeout(() => say('Blackthorn Manor. Five cards, thirty minutes, and something on the stairs.', 4), 400);
+    }
+
+    function loadFallback() {
+      const script = document.createElement('script');
+      script.src = '/vendor/phaser-4.2.1/phaser.min.js';
+      script.onload = boot;
+      script.onerror = () => { document.body.dataset.boot = 'failed'; };
+      document.head.appendChild(script);
+    }
+
+    if (window.Phaser) boot();
+    else loadFallback();
+  })();
+  </script>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    onerror="this.onerror=null;this.src='/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js'"
+  ></script>
+</body>
+</html>
