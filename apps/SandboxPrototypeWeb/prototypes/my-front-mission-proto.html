@@ -1,0 +1,1961 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="Turn-based mech tactics prototype in the style of classic console strategy RPGs: Phaser 4 on a 512x512 isometric map of grassland, badland and water, squads of four-part rigs (body, arms, legs) with per-part damage, weapon classes with same-class counterattacks, and a side-view battle cut-in for every exchange."
+  />
+  <title>Iron Lattice: Rig Tactics</title>
+
+  <!--
+    Self-contained prototype. One file, vanilla JS, no build step.
+
+      - Phaser 4      -> isometric map, unit sprites, the battle cut-in scene
+      - Bootstrap 5.3 -> HUD panels, command menu, dialogs
+
+    Both come from a CDN, and both fall back to the copies vendored under
+    /vendor/ so the page still works offline and in CI.
+
+    All art is painted procedurally into canvases at boot, so there are no
+    image requests.
+
+    Rendering a 512 x 512 map (262,144 tiles) as one object per tile would be
+    far too heavy, so the map scene keeps a pool of tile images and re-skins
+    only the ones the camera can see whenever the view moves.
+
+    Reading order of the script:
+      1. constants, data tables, rng
+      2. map generation  (seeded value-noise fBm)
+      3. art             (tile and rig painters)
+      4. rules           (pathing, hit chance, damage, counterattacks, AI)
+      5. HUD             (Bootstrap panels)
+      6. MapScene        (camera, culling, input, turn flow)
+      7. BattleScene     (side-view cut-in)
+      8. boot
+  -->
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    onerror="this.onerror=null;this.href='/vendor/bootstrap-5.3.3/bootstrap.min.css'"
+  />
+  <link rel="stylesheet" href="/prototype.css" />
+
+  <style>
+    :root {
+      --fm-bg: rgba(6, 14, 38, 0.9);
+      --fm-edge: #8fb3ff;
+      --fm-edge-dim: #2c4a8a;
+      --fm-text: #e6eeff;
+      --fm-cyan: #7fe3ff;
+      --fm-gold: #ffd76a;
+      --fm-red: #ff6b5b;
+      --fm-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #04070f;
+      color: var(--fm-text);
+      font-family: var(--fm-mono);
+      font-size: 14px;
+      user-select: none;
+    }
+
+    #game { position: fixed; inset: 0; }
+    #game canvas { display: block; }
+
+    .fm-panel {
+      position: fixed;
+      background: var(--fm-bg);
+      border: 2px solid var(--fm-edge);
+      outline: 1px solid #000;
+      box-shadow: inset 0 0 0 2px var(--fm-edge-dim), 0 6px 18px rgba(0, 0, 0, 0.55);
+      border-radius: 3px;
+      padding: 8px 10px;
+      z-index: 10;
+    }
+
+    .fm-title {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: var(--fm-cyan);
+      border-bottom: 1px solid var(--fm-edge-dim);
+      margin-bottom: 6px;
+      padding-bottom: 2px;
+    }
+
+    #topbar {
+      top: 8px; left: 8px; right: 8px;
+      display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+      padding: 6px 12px;
+    }
+    #topbar .prototype-back { margin: 0; color: var(--fm-gold); font-size: 12px; }
+    #topbar .stat b { color: var(--fm-gold); }
+    #phase-badge { font-size: 12px; letter-spacing: 0.12em; }
+    body[data-phase="player"] #phase-badge { background: #2357c9; }
+    body[data-phase="enemy"] #phase-badge { background: #b3362a; }
+    #topbar .ms-auto { display: flex; gap: 10px; align-items: center; }
+    #topbar .form-check { margin: 0; font-size: 12px; }
+
+    #terrain-panel { top: 60px; right: 8px; width: 210px; font-size: 12px; }
+    #terrain-panel dl { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; margin: 0; }
+    #terrain-panel dt { color: var(--fm-cyan); font-weight: normal; }
+    #terrain-panel dd { margin: 0; text-align: right; }
+
+    #unit-panel { left: 8px; bottom: 8px; width: 300px; font-size: 12px; }
+    #unit-panel .name { font-size: 15px; color: var(--fm-gold); }
+    .part-row { display: grid; grid-template-columns: 48px 1fr 64px; gap: 6px; align-items: center; margin: 2px 0; }
+    .part-row .lbl { color: var(--fm-cyan); }
+    .part-row .val { text-align: right; }
+    .part-row .progress { height: 8px; background: #101c3c; border-radius: 0; }
+    .part-row .progress-bar { transition: width 0.35s ease; }
+    .part-row[data-destroyed="true"] .val { color: var(--fm-red); }
+    .wpn-line { display: flex; justify-content: space-between; color: #c9d6ff; }
+    .wpn-line[data-usable="false"] { color: #5d6788; text-decoration: line-through; }
+
+    #cmd-panel { right: 8px; top: 50%; transform: translateY(-50%); width: 230px; }
+    .fm-list .list-group-item {
+      background: transparent; color: var(--fm-text); border: 0; border-radius: 0;
+      padding: 4px 8px; font-family: var(--fm-mono); font-size: 13px; text-align: left;
+    }
+    .fm-list .list-group-item:hover:not(:disabled),
+    .fm-list .list-group-item:focus-visible { background: #1d3c8a; color: #fff; }
+    .fm-list .list-group-item:hover:not(:disabled)::before { content: '\25B6  '; color: var(--fm-gold); }
+    .fm-list .list-group-item:disabled { color: #56608a; }
+    .fm-list .sub { display: block; font-size: 11px; color: #9fb0dd; }
+
+    #forecast-panel { right: 248px; top: 50%; transform: translateY(-50%); width: 230px; font-size: 12px; }
+    #forecast-panel .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; text-align: center; }
+    #forecast-panel .big { font-size: 20px; color: var(--fm-gold); }
+
+    #minimap-panel { right: 8px; bottom: 8px; padding: 6px; }
+    #minimap { display: block; cursor: crosshair; image-rendering: pixelated; }
+
+    #phase-banner {
+      position: fixed; left: 0; right: 0; top: 42%;
+      text-align: center; z-index: 30; pointer-events: none;
+      font-size: 42px; letter-spacing: 0.3em; font-weight: bold;
+      padding: 10px 0; opacity: 0;
+      background: linear-gradient(90deg, transparent, rgba(6, 14, 38, 0.92) 20%, rgba(6, 14, 38, 0.92) 80%, transparent);
+      border-top: 2px solid var(--fm-edge); border-bottom: 2px solid var(--fm-edge);
+    }
+    #phase-banner.show { animation: banner 1.3s ease forwards; }
+    #phase-banner[data-side="player"] { color: #9cc2ff; }
+    #phase-banner[data-side="enemy"] { color: #ff9b8f; }
+    @keyframes banner {
+      0% { opacity: 0; transform: translateX(-30%); }
+      20%, 75% { opacity: 1; transform: translateX(0); }
+      100% { opacity: 0; transform: translateX(30%); }
+    }
+
+    #battle-hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+    body[data-battle="active"] > .fm-panel { visibility: hidden; }
+    #battle-hud .side { position: absolute; top: 14px; width: min(320px, 40vw); }
+    #battle-hud .side.left { left: 14px; }
+    #battle-hud .side.right { right: 14px; }
+    #battle-hud .fm-panel { position: static; }
+    #battle-log {
+      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+      width: min(640px, 90vw); text-align: center; font-size: 15px;
+    }
+    #battle-log .fm-panel { position: static; }
+    #btn-skip { position: absolute; right: 14px; bottom: 18px; pointer-events: auto; }
+
+    .overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(10, 22, 60, 0.85), rgba(2, 4, 10, 0.97));
+    }
+    .overlay[hidden] { display: none; }
+    .overlay .fm-panel { position: static; max-width: 640px; padding: 22px 26px; }
+    .overlay h2 { color: var(--fm-gold); letter-spacing: 0.12em; font-size: 28px; }
+    .overlay .tagline { color: var(--fm-cyan); letter-spacing: 0.2em; font-size: 12px; }
+
+    .kbd { border: 1px solid var(--fm-edge-dim); padding: 0 5px; border-radius: 3px; color: var(--fm-gold); }
+  </style>
+</head>
+<body data-boot="loading" data-phase="" data-turn="0" data-mode="idle" data-battle="idle" data-outcome="">
+  <h1 class="visually-hidden">Iron Lattice: Rig Tactics</h1>
+
+  <div id="game" data-testid="game-host"></div>
+
+  <!-- Top bar -->
+  <div id="topbar" class="fm-panel" data-testid="topbar" hidden>
+    <a class="prototype-back" href="/">&larr; All prototypes</a>
+    <span class="stat">TURN <b id="turn-num" data-testid="turn">1</b></span>
+    <span id="phase-badge" class="badge" data-testid="phase">PLAYER PHASE</span>
+    <span class="stat">ALLIES <b id="count-p" data-testid="count-allies">0</b></span>
+    <span class="stat">HOSTILES <b id="count-e" data-testid="count-hostiles">0</b></span>
+    <span class="stat d-none d-lg-inline">MAP <b>512&times;512</b> SEED <b id="seed-num"></b></span>
+    <div class="ms-auto">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="toggle-anim" data-testid="toggle-battle-anim" checked />
+        <label class="form-check-label" for="toggle-anim">Battle scenes</label>
+      </div>
+      <button class="btn btn-sm btn-outline-info" id="btn-help" data-testid="help" type="button">? Controls</button>
+      <button class="btn btn-sm btn-warning" id="btn-end" data-testid="end-phase" type="button">End Phase</button>
+    </div>
+  </div>
+
+  <!-- Terrain info -->
+  <div id="terrain-panel" class="fm-panel" data-testid="terrain-panel" hidden>
+    <div class="fm-title">TERRAIN</div>
+    <dl>
+      <dt>Tile</dt><dd id="tp-pos">-</dd>
+      <dt>Type</dt><dd id="tp-type" data-testid="terrain-type">-</dd>
+      <dt>Move cost</dt><dd id="tp-cost">-</dd>
+      <dt>Evasion</dt><dd id="tp-eva">-</dd>
+    </dl>
+  </div>
+
+  <!-- Unit status -->
+  <div id="unit-panel" class="fm-panel" data-testid="unit-panel" hidden>
+    <div class="d-flex justify-content-between align-items-baseline">
+      <span class="name" id="up-name"></span>
+      <span class="badge" id="up-team"></span>
+    </div>
+    <div class="text-info mb-1" id="up-pilot"></div>
+    <div id="up-parts"></div>
+    <div class="fm-title mt-2 mb-1">WEAPONS</div>
+    <div id="up-weapons"></div>
+    <div class="mt-1 text-secondary" id="up-stats"></div>
+  </div>
+
+  <!-- Command menu -->
+  <div id="cmd-panel" class="fm-panel" data-testid="command-menu" hidden>
+    <div class="fm-title" id="cmd-title">COMMAND</div>
+    <div class="list-group fm-list" id="cmd-list"></div>
+  </div>
+
+  <!-- Attack forecast -->
+  <div id="forecast-panel" class="fm-panel" data-testid="forecast" hidden>
+    <div class="fm-title">FORECAST</div>
+    <div class="vs">
+      <div><div class="text-info" id="fc-att-name"></div><div class="big" id="fc-hit">-</div><div>hit</div><div id="fc-dmg"></div></div>
+      <div class="align-self-center text-secondary">VS</div>
+      <div><div class="text-danger" id="fc-def-name"></div><div class="big" id="fc-chit">-</div><div>counter</div><div id="fc-cdmg"></div></div>
+    </div>
+  </div>
+
+  <!-- Minimap -->
+  <div id="minimap-panel" class="fm-panel" data-testid="minimap" hidden>
+    <canvas id="minimap" width="240" height="120"></canvas>
+  </div>
+
+  <div id="phase-banner" data-testid="phase-banner"></div>
+
+  <!-- Battle cut-in HUD (drawn over the BattleScene) -->
+  <div id="battle-hud" data-testid="battle-hud" hidden>
+    <div class="side left"><div class="fm-panel" id="bh-left"></div></div>
+    <div class="side right"><div class="fm-panel" id="bh-right"></div></div>
+    <div id="battle-log"><div class="fm-panel" id="bh-log" data-testid="battle-log">&nbsp;</div></div>
+    <button class="btn btn-sm btn-outline-warning" id="btn-skip" data-testid="battle-skip" type="button">Skip &raquo;</button>
+  </div>
+
+  <!-- Title / briefing -->
+  <div class="overlay" id="overlay-title" data-testid="title-screen">
+    <div class="fm-panel">
+      <p class="tagline mb-1">TACTICAL RIG OPERATIONS</p>
+      <h2>IRON LATTICE</h2>
+      <p>
+        A hostile rig squad has dug in on the plains. Take your four rigs in,
+        break every enemy body frame, and keep at least one of yours standing.
+      </p>
+      <ul class="small">
+        <li>Each rig has four parts: <b>Body</b>, <b>L-Arm</b>, <b>R-Arm</b>, <b>Legs</b>.
+          Lose the body and the rig is gone; lose an arm and its weapon goes with it;
+          lose the legs and you crawl one tile per turn with no evasion.</li>
+        <li>Weapons come in three classes: <b>Melee</b>, <b>Short</b> and <b>Long</b>.
+          A defender fires back only with a weapon of the same class that reaches.</li>
+        <li>Badland costs 2 move but gives +10 evasion. Water cannot be crossed.</li>
+      </ul>
+      <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-warning" id="btn-start" data-testid="start" type="button" disabled>Loading&hellip;</button>
+        <button class="btn btn-outline-info" id="btn-newmap" type="button">New map</button>
+        <span class="small text-secondary ms-auto">seed <span id="title-seed"></span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-error" hidden>
+    <div class="fm-panel">
+      <h2>NO ENGINE</h2>
+      <p class="mb-0">Phaser could not be loaded from the CDN or the local fallback.</p>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="modal fade" id="help-modal" tabindex="-1" aria-labelledby="help-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="background: var(--fm-bg); border: 2px solid var(--fm-edge);">
+        <div class="modal-header"><h5 class="modal-title" id="help-title">Controls</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body small">
+          <p><span class="kbd">Click</span> a blue rig to open its command menu, then pick <b>Move</b> or <b>Attack</b>.</p>
+          <p>You may move then attack. Once a rig attacks, repairs or waits it is done for the turn.</p>
+          <p><span class="kbd">Right-click</span> / <span class="kbd">Esc</span> cancels, and undoes a move if the rig has not acted yet.</p>
+          <p><span class="kbd">Drag</span>, <span class="kbd">WASD</span> or <span class="kbd">arrow keys</span> pan the map; <span class="kbd">wheel</span> zooms; click the minimap to jump.</p>
+          <p class="mb-0"><span class="kbd">Tab</span> jumps to the next ready rig. <span class="kbd">E</span> ends the phase.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="result-modal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="result-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content text-center" style="background: var(--fm-bg); border: 2px solid var(--fm-edge);">
+        <div class="modal-body py-4">
+          <h2 id="result-title" data-testid="result-title" style="letter-spacing:.2em"></h2>
+          <p id="result-text" class="mb-3"></p>
+          <button class="btn btn-warning" id="btn-again" type="button">Redeploy on a new map</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js"></script>
+  <script>
+  (function main() {
+  'use strict';
+
+  /* =====================================================================
+     1. Constants, data tables, rng
+     ===================================================================== */
+
+  const MAP_SIZE = 512;
+  const TILE_W = 64;
+  const TILE_H = 32;
+  const HALF_W = TILE_W / 2;
+  const HALF_H = TILE_H / 2;
+
+  const T_GRASS = 0;
+  const T_BAD = 1;
+  const T_WATER = 2;
+
+  const TERRAIN = [
+    { key: 'grass', name: 'Grassland', cost: 1, eva: 0, rgb: [78, 140, 60] },
+    { key: 'bad', name: 'Badland', cost: 2, eva: 10, rgb: [150, 112, 72] },
+    { key: 'water', name: 'Water', cost: Infinity, eva: 0, rgb: [38, 88, 150] },
+  ];
+
+  const PARTS = ['body', 'armL', 'armR', 'legs'];
+  const PART_LABEL = { body: 'BODY', armL: 'L-ARM', armR: 'R-ARM', legs: 'LEGS' };
+  const CLASS_LABEL = { melee: 'Melee', short: 'Short', long: 'Long' };
+
+  // Weapon catalogue. `mount` is the part that carries it: arm weapons are lost
+  // with the arm, shoulder weapons last as long as the body does.
+  const WEAPONS = {
+    mg:      { name: 'MG-30 Chaingun',   cls: 'short', min: 1, max: 3, shots: 6, dmg: 9,  acc: 62, ammo: null },
+    rifle:   { name: 'R-14 Rifle',       cls: 'short', min: 1, max: 4, shots: 2, dmg: 24, acc: 74, ammo: null },
+    shotgun: { name: 'S-8 Scattergun',   cls: 'short', min: 1, max: 2, shots: 8, dmg: 7,  acc: 66, ammo: null },
+    knuckle: { name: 'Impact Knuckle',   cls: 'melee', min: 1, max: 1, shots: 1, dmg: 32, acc: 80, ammo: null },
+    rod:     { name: 'Shock Rod',        cls: 'melee', min: 1, max: 1, shots: 1, dmg: 40, acc: 72, ammo: null },
+    missile: { name: 'LM-6 Missile Pod', cls: 'long',  min: 3, max: 6, shots: 1, dmg: 48, acc: 70, ammo: 4 },
+    rocket:  { name: 'RK-2 Rocket Pack', cls: 'long',  min: 2, max: 5, shots: 2, dmg: 26, acc: 60, ammo: 3 },
+  };
+
+  // Rig frames: part HP, base evasion and move points.
+  const FRAMES = {
+    striker: { name: 'Striker', hp: { body: 120, armL: 70, armR: 70, legs: 90 },  eva: 18, move: 6 },
+    lancer:  { name: 'Lancer',  hp: { body: 110, armL: 64, armR: 64, legs: 82 },  eva: 22, move: 6 },
+    bastion: { name: 'Bastion', hp: { body: 150, armL: 84, armR: 84, legs: 104 }, eva: 8,  move: 4 },
+    hound:   { name: 'Hound',   hp: { body: 100, armL: 60, armR: 60, legs: 80 },  eva: 26, move: 7 },
+  };
+
+  const PLAYER_ROSTER = [
+    { name: 'RAVEN',  pilot: 'Lt. Mara Ishii',  skill: 12, frame: 'striker', weapons: [['mg', 'armR'], ['knuckle', 'armL']] },
+    { name: 'HERON',  pilot: 'Sgt. Dev Okafor', skill: 16, frame: 'lancer',  weapons: [['rifle', 'armR'], ['rod', 'armL']] },
+    { name: 'ANVIL',  pilot: 'Sgt. Lena Voss',  skill: 10, frame: 'bastion', weapons: [['missile', 'shoulder'], ['mg', 'armR'], ['knuckle', 'armL']] },
+    { name: 'KESTREL', pilot: 'Cpl. Tomas Reyes', skill: 8, frame: 'hound',  weapons: [['shotgun', 'armR'], ['knuckle', 'armL']] },
+  ];
+
+  const ENEMY_ROSTER = [
+    { name: 'VIPER-1', pilot: 'Hostile pilot', skill: 6,  frame: 'striker', weapons: [['mg', 'armR'], ['knuckle', 'armL']] },
+    { name: 'VIPER-2', pilot: 'Hostile pilot', skill: 6,  frame: 'striker', weapons: [['mg', 'armR'], ['knuckle', 'armL']] },
+    { name: 'VIPER-3', pilot: 'Hostile pilot', skill: 8,  frame: 'lancer',  weapons: [['rifle', 'armR'], ['rod', 'armL']] },
+    { name: 'VIPER-4', pilot: 'Hostile pilot', skill: 4,  frame: 'bastion', weapons: [['rocket', 'shoulder'], ['mg', 'armR'], ['knuckle', 'armL']] },
+    { name: 'VIPER-5', pilot: 'Hostile ace',   skill: 12, frame: 'hound',   weapons: [['shotgun', 'armR'], ['rod', 'armL']] },
+  ];
+
+  const params = new URLSearchParams(location.search);
+  const SEED = Number.parseInt(params.get('seed'), 10) || ((Math.random() * 1e6) | 0) + 1;
+
+  function mulberry32(a) {
+    return function next() {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Combat rolls use their own seeded stream so a given seed replays the same.
+  const combatRng = mulberry32(SEED * 7919);
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const key = (tx, ty) => ty * MAP_SIZE + tx;
+  const manhattan = (a, b) => Math.abs(a.tx - b.tx) + Math.abs(a.ty - b.ty);
+
+  /* =====================================================================
+     2. Map generation
+     ===================================================================== */
+
+  function hash2(x, y, s) {
+    let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 1442695041);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
+  function valueNoise(x, y, s) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s);
+    const c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+
+  function fbm(x, y, s, octaves) {
+    let sum = 0, amp = 1, freq = 1, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * valueNoise(x * freq, y * freq, s + i * 1013);
+      norm += amp; amp *= 0.5; freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  /**
+   * Terrain per tile plus a cosmetic variant index. The area around the map
+   * centre is nudged towards land so the opening engagement has room, but
+   * ponds and rivers still cut through it.
+   */
+  function generateMap(seed) {
+    const tiles = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    const variant = new Uint8Array(MAP_SIZE * MAP_SIZE);
+    const c = MAP_SIZE / 2;
+    for (let y = 0; y < MAP_SIZE; y++) {
+      for (let x = 0; x < MAP_SIZE; x++) {
+        let e = fbm(x / 56, y / 56, seed, 4);
+        const d = Math.hypot(x - c, y - c);
+        e += 0.16 * Math.max(0, 1 - d / 70);
+        // A thin winding river band, so water is not only in round lakes.
+        const river = Math.abs(fbm(x / 140 + 31, y / 140 - 17, seed + 55, 3) - 0.5);
+        const m = fbm(x / 38 + 200, y / 38 - 90, seed + 7, 4);
+        let t;
+        if (e < 0.37 || (river < 0.012 && d > 18)) t = T_WATER;
+        else if (m < 0.45) t = T_BAD;
+        else t = T_GRASS;
+        tiles[key(x, y)] = t;
+        variant[key(x, y)] = (hash2(x, y, seed + 99) * 4) | 0;
+      }
+    }
+    return { tiles, variant };
+  }
+
+  /* =====================================================================
+     3. Art
+     ===================================================================== */
+
+  function makeCanvas(w, h) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    return cv;
+  }
+
+  function diamondPath(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(HALF_W, 0);
+    ctx.lineTo(TILE_W, HALF_H);
+    ctx.lineTo(HALF_W, TILE_H);
+    ctx.lineTo(0, HALF_H);
+    ctx.closePath();
+  }
+
+  const rgb = (r, g, b, a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
+
+  function paintTile(type, v, frame) {
+    const cv = makeCanvas(TILE_W, TILE_H);
+    const ctx = cv.getContext('2d');
+    const rnd = mulberry32(type * 1000 + v * 17 + frame * 3 + 5);
+    const [r, g, b] = TERRAIN[type].rgb;
+    const shade = (v - 1.5) * 5;
+
+    ctx.save();
+    diamondPath(ctx);
+    ctx.clip();
+    ctx.fillStyle = rgb(r + shade, g + shade, b + shade);
+    ctx.fillRect(0, 0, TILE_W, TILE_H);
+
+    if (type === T_GRASS) {
+      for (let i = 0; i < 46; i++) {
+        const x = rnd() * TILE_W, y = rnd() * TILE_H;
+        ctx.fillStyle = rnd() < 0.5 ? rgb(r + 24, g + 30, b + 10) : rgb(r - 22, g - 26, b - 14);
+        ctx.fillRect(x, y, 1, 2);
+      }
+      if (v === 3) {
+        for (let i = 0; i < 4; i++) {
+          ctx.fillStyle = ['#f4e37a', '#f3f0ff', '#e8a0c8'][i % 3];
+          ctx.fillRect(10 + rnd() * 44, 6 + rnd() * 20, 2, 2);
+        }
+      }
+      if (v === 0) {
+        ctx.fillStyle = rgb(r - 30, g - 20, b - 18);
+        ctx.beginPath(); ctx.ellipse(22 + rnd() * 20, 14 + rnd() * 6, 5, 3, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (type === T_BAD) {
+      for (let i = 0; i < 30; i++) {
+        ctx.fillStyle = rnd() < 0.5 ? rgb(r + 22, g + 18, b + 12) : rgb(r - 28, g - 24, b - 20);
+        ctx.fillRect(rnd() * TILE_W, rnd() * TILE_H, 2, 1);
+      }
+      ctx.strokeStyle = rgb(r - 45, g - 40, b - 34, 0.8);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      let x = 12 + rnd() * 16, y = 8 + rnd() * 6;
+      ctx.moveTo(x, y);
+      for (let i = 0; i < 4; i++) { x += 4 + rnd() * 8; y += (rnd() - 0.4) * 6; ctx.lineTo(x, y); }
+      ctx.stroke();
+      if (v >= 2) {
+        ctx.fillStyle = rgb(r - 30, g - 34, b - 30);
+        ctx.beginPath(); ctx.ellipse(40, 18, 4, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = rgb(r + 30, g + 26, b + 20);
+        ctx.fillRect(38, 16, 3, 1);
+      }
+    } else {
+      for (let i = 0; i < 5; i++) {
+        const y = ((i * 7 + frame * 3 + v * 2) % 30) + 1;
+        const x = 8 + ((i * 13 + frame * 5) % 40);
+        ctx.strokeStyle = rgb(150, 200, 240, 0.55);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 4, y - 2, x + 8, y); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // Faint grid edge: the tactical map always shows its tiles.
+    diamondPath(ctx);
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    return cv;
+  }
+
+  const TEAM_COLORS = {
+    player: { base: '#5b8fd6', dark: '#2d4f86', light: '#a9cbff', trim: '#e7eefc' },
+    enemy:  { base: '#c0573f', dark: '#6e2a20', light: '#f2a48f', trim: '#2a1612' },
+  };
+
+  /** Map sprite: a small 3/4-view rig facing right, feet at (24, 56). */
+  function paintRigSprite(team, hasPod, frameKey) {
+    const c = TEAM_COLORS[team];
+    const cv = makeCanvas(52, 62);
+    const ctx = cv.getContext('2d');
+    const heavy = frameKey === 'bastion' ? 2 : 0;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(24, 56, 17, 5, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = c.dark; // back arm
+    ctx.fillRect(6 - heavy, 18, 7, 16);
+    ctx.fillStyle = c.dark; // legs
+    ctx.fillRect(14 - heavy, 36, 8, 16);
+    ctx.fillRect(27, 36, 8, 16);
+    ctx.fillStyle = '#20242c';
+    ctx.fillRect(11 - heavy, 51, 13, 5);
+    ctx.fillRect(25, 51, 13, 5);
+    if (hasPod) {
+      ctx.fillStyle = c.dark; ctx.fillRect(7, 5, 15, 11);
+      ctx.fillStyle = '#111'; for (let i = 0; i < 3; i++) ctx.fillRect(9 + i * 4, 7, 2, 2);
+    }
+    ctx.fillStyle = c.base; // torso
+    ctx.fillRect(10 - heavy, 15, 28 + heavy * 2, 23);
+    ctx.fillStyle = c.light;
+    ctx.fillRect(12 - heavy, 17, 24 + heavy * 2, 4);
+    ctx.fillStyle = '#7fe3ff'; // cockpit glass
+    ctx.fillRect(28, 23, 8, 5);
+    ctx.fillStyle = c.base; // head
+    ctx.fillRect(18, 7, 12, 9);
+    ctx.fillStyle = '#ffd76a';
+    ctx.fillRect(26, 10, 4, 2);
+    ctx.fillStyle = c.base; // front arm + gun
+    ctx.fillRect(34, 18, 8, 16);
+    ctx.fillStyle = '#2b2f38';
+    ctx.fillRect(38, 28, 13, 4);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeRect(10.5 - heavy, 15.5, 27 + heavy * 2, 22);
+    return cv;
+  }
+
+  /* =====================================================================
+     4. Rules
+     ===================================================================== */
+
+  const state = {
+    seed: SEED,
+    map: null,
+    units: [],
+    turn: 1,
+    phase: 'player',
+    mode: 'idle',       // idle | selected | move | weapon | target | busy | over
+    selected: null,
+    activeWeapon: null,
+    reach: null,
+    undo: null,
+    battleAnim: true,
+    outcome: '',
+  };
+
+  const tileAt = (tx, ty) =>
+    tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE ? T_WATER : state.map.tiles[key(tx, ty)];
+  const unitAt = (tx, ty) => state.units.find((u) => u.alive && u.tx === tx && u.ty === ty) || null;
+  const alive = (team) => state.units.filter((u) => u.alive && u.team === team);
+
+  let unitSeq = 0;
+  function makeUnit(def, team, tx, ty) {
+    const frame = FRAMES[def.frame];
+    const parts = {};
+    for (const p of PARTS) parts[p] = { hp: frame.hp[p], max: frame.hp[p] };
+    return {
+      id: `${team[0]}${++unitSeq}`,
+      team, name: def.name, pilot: def.pilot, skill: def.skill,
+      frameKey: def.frame, frameName: frame.name,
+      eva: frame.eva, baseMove: frame.move,
+      parts,
+      weapons: def.weapons.map(([w, mount]) => ({ ...WEAPONS[w], id: w, mount, ammoLeft: WEAPONS[w].ammo })),
+      kits: team === 'player' ? 1 : 0,
+      tx, ty, alive: true, moved: false, acted: false,
+      faceLeft: team === 'enemy',
+    };
+  }
+
+  const moveOf = (u) => (u.parts.legs.hp > 0 ? u.baseMove : 1);
+  const weaponUsable = (u, w) =>
+    (w.mount === 'shoulder' || u.parts[w.mount].hp > 0) && (w.ammoLeft === null || w.ammoLeft > 0);
+
+  /** Dijkstra over move cost. Enemy rigs block, friendly rigs can be passed but not stopped on. */
+  function reachable(u) {
+    const budget = moveOf(u);
+    const best = new Map();
+    const start = key(u.tx, u.ty);
+    best.set(start, { cost: 0, prev: -1, tx: u.tx, ty: u.ty });
+    const open = [[0, u.tx, u.ty]];
+    while (open.length) {
+      open.sort((a, b) => a[0] - b[0]);
+      const [cost, tx, ty] = open.shift();
+      if (cost > best.get(key(tx, ty)).cost) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = tx + dx, ny = ty + dy;
+        const t = tileAt(nx, ny);
+        const step = TERRAIN[t].cost;
+        // A rig without legs crawls a single tile whatever the ground.
+        const nc = cost + (u.parts.legs.hp > 0 ? step : step === Infinity ? Infinity : 1);
+        if (nc > budget) continue;
+        const occ = unitAt(nx, ny);
+        if (occ && occ.team !== u.team) continue;
+        const k = key(nx, ny);
+        const prev = best.get(k);
+        if (prev && prev.cost <= nc) continue;
+        best.set(k, { cost: nc, prev: key(tx, ty), tx: nx, ty: ny });
+        open.push([nc, nx, ny]);
+      }
+    }
+    for (const [k, v] of best) {
+      const occ = unitAt(v.tx, v.ty);
+      if (occ && occ !== u) v.passOnly = true;
+    }
+    return best;
+  }
+
+  function pathTo(reach, tx, ty) {
+    const path = [];
+    let k = key(tx, ty);
+    while (k !== -1 && reach.has(k)) {
+      const n = reach.get(k);
+      path.unshift({ tx: n.tx, ty: n.ty });
+      k = n.prev;
+    }
+    return path;
+  }
+
+  function evasionOf(u) {
+    return (u.parts.legs.hp > 0 ? u.eva : 0) + TERRAIN[tileAt(u.tx, u.ty)].eva;
+  }
+
+  function hitChance(att, def, w) {
+    return clamp(w.acc + att.skill - evasionOf(def), 5, 95);
+  }
+
+  function pickPart(cls) {
+    const r = combatRng() * 100;
+    if (cls === 'melee') return r < 50 ? 'body' : r < 65 ? 'armL' : r < 80 ? 'armR' : 'legs';
+    return r < 40 ? 'body' : r < 58 ? 'armL' : r < 76 ? 'armR' : 'legs';
+  }
+
+  const inRange = (w, d) => d >= w.min && d <= w.max;
+  const expected = (att, def, w) => (w.shots * w.dmg * hitChance(att, def, w)) / 100;
+
+  /** The defender answers with the best same-class weapon that reaches. */
+  function counterWeapon(def, att, cls) {
+    const d = manhattan(def, att);
+    const options = def.weapons.filter((w) => w.cls === cls && weaponUsable(def, w) && inRange(w, d));
+    options.sort((a, b) => expected(def, att, b) - expected(def, att, a));
+    return options[0] || null;
+  }
+
+  function fire(att, def, w) {
+    const chance = hitChance(att, def, w);
+    if (w.ammoLeft !== null) w.ammoLeft--;
+    const shots = [];
+    for (let i = 0; i < w.shots; i++) {
+      if (def.parts.body.hp <= 0) break;
+      if (combatRng() * 100 >= chance) { shots.push({ hit: false }); continue; }
+      let part = pickPart(w.cls);
+      // Hits on a part that is already gone carry through into the body.
+      if (def.parts[part].hp <= 0) part = 'body';
+      const dmg = Math.round(w.dmg * (0.85 + combatRng() * 0.3));
+      const p = def.parts[part];
+      p.hp = Math.max(0, p.hp - dmg);
+      shots.push({ hit: true, part, dmg, hp: p.hp, broke: p.hp === 0 });
+    }
+    return { shooter: att, target: def, weapon: w, chance, shots };
+  }
+
+  const snapshot = (u) => Object.fromEntries(PARTS.map((p) => [p, u.parts[p].hp]));
+
+  /** Resolve a full exchange up front; the cut-in only replays it. */
+  function resolveBattle(att, def, w) {
+    const before = { [att.id]: snapshot(att), [def.id]: snapshot(def) };
+    const exchanges = [fire(att, def, w)];
+    if (def.parts.body.hp > 0) {
+      const cw = counterWeapon(def, att, w.cls);
+      if (cw) exchanges.push(fire(def, att, cw));
+    }
+    for (const u of [att, def]) if (u.parts.body.hp <= 0) u.alive = false;
+    const left = att.team === 'player' ? att : def;
+    const right = left === att ? def : att;
+    return { att, def, left, right, before, exchanges };
+  }
+
+  /** Enemy turn planning: best expected damage from any reachable tile, else close in. */
+  function planEnemy(u) {
+    const reach = reachable(u);
+    const targets = alive('player');
+    let best = null;
+    for (const node of reach.values()) {
+      if (node.passOnly) continue;
+      const here = { tx: node.tx, ty: node.ty };
+      for (const t of targets) {
+        const d = manhattan(here, t);
+        for (const w of u.weapons) {
+          if (!weaponUsable(u, w) || !inRange(w, d)) continue;
+          const saved = [u.tx, u.ty];
+          u.tx = here.tx; u.ty = here.ty;
+          let score = expected(u, t, w);
+          const cw = counterWeapon(t, u, w.cls);
+          if (cw) score -= expected(t, u, cw) * 0.6;
+          if (t.parts.body.hp < t.parts.body.max * 0.35) score += 25;
+          score -= node.cost * 0.2;
+          u.tx = saved[0]; u.ty = saved[1];
+          if (!best || score > best.score) best = { score, node, target: t, weapon: w };
+        }
+      }
+    }
+    if (best) return { reach, dest: best.node, target: best.target, weapon: best.weapon };
+
+    let dest = reach.get(key(u.tx, u.ty));
+    let bestD = Infinity;
+    for (const node of reach.values()) {
+      if (node.passOnly) continue;
+      for (const t of targets) {
+        const d = manhattan(node, t) + node.cost * 0.01;
+        if (d < bestD) { bestD = d; dest = node; }
+      }
+    }
+    return { reach, dest, target: null, weapon: null };
+  }
+
+  /** Spawn the two squads on connected land near the centre. */
+  function deploy() {
+    const nearestLand = (sx, sy) => {
+      for (let r = 0; r < 60; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            if (tileAt(sx + dx, sy + dy) !== T_WATER) return { tx: sx + dx, ty: sy + dy };
+          }
+        }
+      }
+      return { tx: sx, ty: sy };
+    };
+    const bfs = (start, limit) => {
+      const dist = new Map([[key(start.tx, start.ty), 0]]);
+      const order = [{ ...start, d: 0 }];
+      for (let i = 0; i < order.length; i++) {
+        const n = order[i];
+        if (n.d >= limit) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = n.tx + dx, ny = n.ty + dy;
+          if (tileAt(nx, ny) === T_WATER || dist.has(key(nx, ny))) continue;
+          dist.set(key(nx, ny), n.d + 1);
+          order.push({ tx: nx, ty: ny, d: n.d + 1 });
+        }
+      }
+      return order;
+    };
+    const pickSpots = (order, n, taken) => {
+      const spots = [];
+      for (const c of order) {
+        if (spots.length === n) break;
+        // Three tiles apart, so no two rigs stand in the same screen column.
+        if ([...taken, ...spots].some((s) => manhattan(s, c) < 3)) continue;
+        spots.push(c);
+      }
+      return spots;
+    };
+
+    const pAnchor = nearestLand(MAP_SIZE / 2 - 4, MAP_SIZE / 2 + 7);
+    const field = bfs(pAnchor, 40);
+    const ring = field.filter((n) => n.d >= 13 && n.d <= 16);
+    ring.sort((a, b) => (b.tx - b.ty) - (a.tx - a.ty) || a.d - b.d);
+    const eAnchor = ring[0] || field[field.length - 1];
+
+    const pSpots = pickSpots(bfs(pAnchor, 10), PLAYER_ROSTER.length, []);
+    const eSpots = pickSpots(bfs(eAnchor, 10), ENEMY_ROSTER.length, pSpots);
+    PLAYER_ROSTER.forEach((d, i) => state.units.push(makeUnit(d, 'player', pSpots[i].tx, pSpots[i].ty)));
+    ENEMY_ROSTER.forEach((d, i) => state.units.push(makeUnit(d, 'enemy', eSpots[i].tx, eSpots[i].ty)));
+  }
+
+  /* =====================================================================
+     5. HUD
+     ===================================================================== */
+
+  const $ = (id) => document.getElementById(id);
+  const body = document.body;
+
+  function setBodyState() {
+    body.dataset.phase = state.phase;
+    body.dataset.turn = String(state.turn);
+    body.dataset.mode = state.mode;
+    body.dataset.outcome = state.outcome;
+    $('turn-num').textContent = state.turn;
+    $('phase-badge').textContent = state.phase === 'player' ? 'PLAYER PHASE' : 'ENEMY PHASE';
+    $('count-p').textContent = alive('player').length;
+    $('count-e').textContent = alive('enemy').length;
+    $('btn-end').disabled = state.phase !== 'player' || state.mode === 'busy' || state.mode === 'over';
+  }
+
+  function barColor(ratio) {
+    return ratio > 0.6 ? 'bg-info' : ratio > 0.3 ? 'bg-warning' : 'bg-danger';
+  }
+
+  function partRows(u, hpOverride) {
+    return PARTS.map((p) => {
+      const hp = hpOverride ? hpOverride[p] : u.parts[p].hp;
+      const max = u.parts[p].max;
+      const ratio = hp / max;
+      return `<div class="part-row" data-part="${p}" data-hp="${hp}" data-destroyed="${hp <= 0}">
+        <span class="lbl">${PART_LABEL[p]}</span>
+        <div class="progress"><div class="progress-bar ${barColor(ratio)}" style="width:${ratio * 100}%"></div></div>
+        <span class="val">${hp <= 0 ? 'LOST' : `${hp}/${max}`}</span></div>`;
+    }).join('');
+  }
+
+  function showUnitPanel(u) {
+    const panel = $('unit-panel');
+    if (!u) { panel.hidden = true; return; }
+    panel.hidden = false;
+    panel.dataset.unit = u.id;
+    panel.dataset.team = u.team;
+    $('up-name').textContent = `${u.name}  ·  ${u.frameName}`;
+    const team = $('up-team');
+    team.textContent = u.team === 'player' ? (u.acted ? 'DONE' : 'ALLY') : 'HOSTILE';
+    team.className = `badge ${u.team === 'player' ? (u.acted ? 'bg-secondary' : 'bg-primary') : 'bg-danger'}`;
+    $('up-pilot').textContent = `${u.pilot}  ·  SKILL +${u.skill}`;
+    $('up-parts').innerHTML = partRows(u);
+    $('up-weapons').innerHTML = u.weapons.map((w) =>
+      `<div class="wpn-line" data-usable="${weaponUsable(u, w)}"><span>${w.name}</span>
+        <span>${CLASS_LABEL[w.cls]} ${w.min}-${w.max} · ${w.dmg}×${w.shots}${w.ammoLeft === null ? '' : ` · ${w.ammoLeft}`}</span></div>`
+    ).join('');
+    $('up-stats').textContent =
+      `MOVE ${moveOf(u)}  ·  EVA ${evasionOf(u)}  ·  REPAIR KITS ${u.kits}`;
+  }
+
+  function showTerrain(tx, ty) {
+    const panel = $('terrain-panel');
+    if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return;
+    const t = TERRAIN[tileAt(tx, ty)];
+    panel.dataset.terrain = t.key;
+    $('tp-pos').textContent = `${tx}, ${ty}`;
+    $('tp-type').textContent = t.name;
+    $('tp-cost').textContent = t.cost === Infinity ? 'impassable' : t.cost;
+    $('tp-eva').textContent = t.eva ? `+${t.eva}` : '±0';
+  }
+
+  /** Build the command or weapon list. `items` are {id, label, sub, disabled, run}. */
+  function showMenu(title, items) {
+    const panel = $('cmd-panel');
+    if (!items) { panel.hidden = true; return; }
+    $('cmd-title').textContent = title;
+    const list = $('cmd-list');
+    list.innerHTML = '';
+    for (const it of items) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'list-group-item list-group-item-action';
+      btn.dataset.testid = `cmd-${it.id}`;
+      btn.disabled = !!it.disabled;
+      btn.innerHTML = `${it.label}${it.sub ? `<span class="sub">${it.sub}</span>` : ''}`;
+      btn.addEventListener('click', () => it.run());
+      list.appendChild(btn);
+    }
+    panel.hidden = false;
+  }
+
+  function showForecast(att, def, w) {
+    const panel = $('forecast-panel');
+    if (!att) { panel.hidden = true; return; }
+    panel.hidden = false;
+    $('fc-att-name').textContent = att.name;
+    $('fc-def-name').textContent = def.name;
+    $('fc-hit').textContent = `${hitChance(att, def, w)}%`;
+    $('fc-dmg').textContent = `${w.dmg}×${w.shots}`;
+    const cw = counterWeapon(def, att, w.cls);
+    $('fc-chit').textContent = cw ? `${hitChance(def, att, cw)}%` : '—';
+    $('fc-cdmg').textContent = cw ? `${cw.dmg}×${cw.shots}` : 'no counter';
+    panel.dataset.counter = cw ? 'yes' : 'no';
+  }
+
+  function banner(text, side) {
+    const el = $('phase-banner');
+    el.textContent = text;
+    el.dataset.side = side;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+
+  /* ---------------- minimap ---------------- */
+
+  const MINI_W = 240, MINI_H = 120;
+  const MINI_A = MINI_W / (2 * MAP_SIZE);
+  const MINI_B = MINI_H / (2 * MAP_SIZE);
+  let miniTerrain = null;
+
+  function buildMiniTerrain() {
+    miniTerrain = makeCanvas(MAP_SIZE, MAP_SIZE);
+    const ctx = miniTerrain.getContext('2d');
+    const img = ctx.createImageData(MAP_SIZE, MAP_SIZE);
+    for (let i = 0; i < MAP_SIZE * MAP_SIZE; i++) {
+      const [r, g, b] = TERRAIN[state.map.tiles[i]].rgb;
+      img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function drawMinimap(view) {
+    const ctx = $('minimap').getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, MINI_W, MINI_H);
+    ctx.imageSmoothingEnabled = true;
+    ctx.setTransform(MINI_A, MINI_B, -MINI_A, MINI_B, MINI_W / 2, 0);
+    ctx.drawImage(miniTerrain, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const u of state.units) {
+      if (!u.alive) continue;
+      const mx = MINI_W / 2 + (u.tx - u.ty + 0) * MINI_A;
+      const my = (u.tx + u.ty + 1) * MINI_B;
+      ctx.fillStyle = u.team === 'player' ? '#9cc2ff' : '#ff6b5b';
+      ctx.fillRect(mx - 2, my - 2, 4, 4);
+    }
+    if (view) {
+      ctx.strokeStyle = '#ffd76a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+        MINI_W / 2 + view.x * (MINI_A / HALF_W), view.y * (MINI_B / HALF_H),
+        view.w * (MINI_A / HALF_W), view.h * (MINI_B / HALF_H)
+      );
+    }
+  }
+
+  /* =====================================================================
+     6. MapScene
+     ===================================================================== */
+
+  const tileCenter = (tx, ty) => ({ x: (tx - ty) * HALF_W, y: (tx + ty) * HALF_H + HALF_H });
+
+  // Scene classes are built inside a function: `extends Phaser.Scene` must not
+  // be evaluated before boot() knows Phaser actually loaded.
+  function defineScenes() {
+  class MapScene extends Phaser.Scene {
+    constructor() { super('map'); }
+
+    create() {
+      this.makeTextures();
+      this.pool = [];
+      this.waterFrame = 0;
+      this.lastView = '';
+      this.dirty = true;
+
+      this.highlight = this.add.graphics().setDepth(1);
+      this.cursor = this.add.graphics().setDepth(2);
+
+      for (const u of state.units) this.spawnSprite(u);
+
+      const cam = this.cameras.main;
+      cam.setBackgroundColor('#04070f');
+      const first = alive('player')[0];
+      const c = tileCenter(first.tx + 4, first.ty - 4);
+      cam.centerOn(c.x, c.y);
+
+      this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ESC,TAB,E');
+      this.input.keyboard.on('keydown-ESC', () => this.cancel());
+      this.input.keyboard.on('keydown-TAB', (ev) => { ev.preventDefault?.(); this.cycleUnit(); });
+      this.input.keyboard.on('keydown-E', () => { if (!$('btn-end').disabled) endPlayerPhase(); });
+      this.input.mouse?.disableContextMenu();
+
+      this.drag = null;
+      this.input.on('pointerdown', (p) => {
+        if (p.rightButtonDown()) { this.cancel(); return; }
+        this.drag = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY, moved: false };
+      });
+      this.input.on('pointermove', (p) => {
+        const t = this.pointerTile(p);
+        this.hoverTile(t.tx, t.ty);
+        if (this.drag && p.isDown) {
+          const dx = p.x - this.drag.x, dy = p.y - this.drag.y;
+          if (Math.abs(dx) + Math.abs(dy) > 6) this.drag.moved = true;
+          if (this.drag.moved) {
+            cam.scrollX = this.drag.sx - dx / cam.zoom;
+            cam.scrollY = this.drag.sy - dy / cam.zoom;
+          }
+        }
+      });
+      this.input.on('pointerup', (p) => {
+        if (p.rightButtonReleased && p.rightButtonReleased()) return;
+        const d = this.drag;
+        this.drag = null;
+        if (d && !d.moved && p.button === 0) {
+          const t = this.pointerTile(p);
+          this.clickTile(t.tx, t.ty);
+        }
+      });
+      this.input.on('wheel', (p, over, dx, dy) => {
+        const before = this.screenToWorld(p.x, p.y);
+        cam.zoom = clamp(cam.zoom * (dy > 0 ? 0.88 : 1.14), 0.45, 2.2);
+        const midX = before.x - (p.x - cam.width / 2) / cam.zoom;
+        const midY = before.y - (p.y - cam.height / 2) / cam.zoom;
+        cam.scrollX = midX - cam.width / 2;
+        cam.scrollY = midY - cam.height / 2;
+      });
+
+      this.time.addEvent({ delay: 700, loop: true, callback: () => { this.waterFrame ^= 1; this.dirty = true; } });
+      this.time.addEvent({ delay: 150, loop: true, callback: () => drawMinimap(this.view()) });
+
+      $('minimap').addEventListener('click', (ev) => {
+        const rect = ev.currentTarget.getBoundingClientRect();
+        const sx = (ev.clientX - rect.left) * (MINI_W / rect.width) - MINI_W / 2;
+        const sy = (ev.clientY - rect.top) * (MINI_H / rect.height);
+        const tx = (sx / MINI_A + sy / MINI_B) / 2;
+        const ty = (sy / MINI_B - sx / MINI_A) / 2;
+        const w = tileCenter(clamp(tx, 0, MAP_SIZE - 1), clamp(ty, 0, MAP_SIZE - 1));
+        cam.centerOn(w.x, w.y);
+      });
+
+      this.refreshAll();
+      this.events.once('shutdown', () => this.time.removeAllEvents());
+    }
+
+    makeTextures() {
+      for (const type of [T_GRASS, T_BAD, T_WATER]) {
+        for (let v = 0; v < 4; v++) {
+          for (let f = 0; f < (type === T_WATER ? 2 : 1); f++) {
+            const k = `t${type}_${v}_${f}`;
+            if (!this.textures.exists(k)) this.textures.addCanvas(k, paintTile(type, v, f));
+          }
+        }
+      }
+      for (const team of ['player', 'enemy']) {
+        for (const fk of Object.keys(FRAMES)) {
+          for (const pod of [false, true]) {
+            const k = `rig_${team}_${fk}_${pod ? 1 : 0}`;
+            if (!this.textures.exists(k)) this.textures.addCanvas(k, paintRigSprite(team, pod, fk));
+          }
+        }
+      }
+    }
+
+    spawnSprite(u) {
+      const pod = u.weapons.some((w) => w.mount === 'shoulder');
+      const c = tileCenter(u.tx, u.ty);
+      u.sprite = this.add.image(c.x, c.y, `rig_${u.team}_${u.frameKey}_${pod ? 1 : 0}`)
+        .setOrigin(24 / 52, 56 / 62).setDepth(10 + u.tx + u.ty).setFlipX(u.faceLeft);
+      u.bar = this.add.graphics().setDepth(5000);
+      u.label = this.add.text(c.x, c.y, u.name, {
+        fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '10px',
+        color: u.team === 'player' ? '#cfe0ff' : '#ffc2b8', stroke: '#000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(5000);
+    }
+
+    /* ---------- camera / culling ---------- */
+
+    view() {
+      const cam = this.cameras.main;
+      const w = cam.width / cam.zoom, h = cam.height / cam.zoom;
+      return { x: cam.scrollX + cam.width / 2 - w / 2, y: cam.scrollY + cam.height / 2 - h / 2, w, h };
+    }
+
+    screenToWorld(px, py) {
+      const cam = this.cameras.main;
+      return {
+        x: cam.scrollX + cam.width / 2 + (px - cam.width / 2) / cam.zoom,
+        y: cam.scrollY + cam.height / 2 + (py - cam.height / 2) / cam.zoom,
+      };
+    }
+
+    worldToTile(wx, wy) {
+      const fx = wx / HALF_W, fy = wy / HALF_H;
+      return { tx: Math.floor((fy + fx) / 2), ty: Math.floor((fy - fx) / 2) };
+    }
+
+    pointerTile(p) {
+      const w = this.screenToWorld(p.x, p.y);
+      return this.worldToTile(w.x, w.y);
+    }
+
+    tileScreen(tx, ty) {
+      const cam = this.cameras.main;
+      const c = tileCenter(tx, ty);
+      return {
+        x: (c.x - (cam.scrollX + cam.width / 2)) * cam.zoom + cam.width / 2,
+        y: (c.y - (cam.scrollY + cam.height / 2)) * cam.zoom + cam.height / 2,
+      };
+    }
+
+    clampCamera() {
+      const cam = this.cameras.main;
+      const midX = clamp(cam.scrollX + cam.width / 2, -MAP_SIZE * HALF_W, MAP_SIZE * HALF_W);
+      const midY = clamp(cam.scrollY + cam.height / 2, 0, MAP_SIZE * TILE_H);
+      cam.scrollX = midX - cam.width / 2;
+      cam.scrollY = midY - cam.height / 2;
+    }
+
+    redrawTiles() {
+      const v = this.view();
+      const corners = [[v.x, v.y], [v.x + v.w, v.y], [v.x, v.y + v.h], [v.x + v.w, v.y + v.h]]
+        .map(([x, y]) => this.worldToTile(x, y));
+      const minTx = clamp(Math.min(...corners.map((c) => c.tx)) - 1, 0, MAP_SIZE - 1);
+      const maxTx = clamp(Math.max(...corners.map((c) => c.tx)) + 1, 0, MAP_SIZE - 1);
+      const minTy = clamp(Math.min(...corners.map((c) => c.ty)) - 1, 0, MAP_SIZE - 1);
+      const maxTy = clamp(Math.max(...corners.map((c) => c.ty)) + 1, 0, MAP_SIZE - 1);
+      const { tiles, variant } = state.map;
+      let n = 0;
+      for (let ty = minTy; ty <= maxTy; ty++) {
+        for (let tx = minTx; tx <= maxTx; tx++) {
+          const sx = (tx - ty) * HALF_W, sy = (tx + ty) * HALF_H;
+          if (sx + HALF_W < v.x || sx - HALF_W > v.x + v.w || sy + TILE_H < v.y || sy > v.y + v.h) continue;
+          const k = key(tx, ty);
+          const t = tiles[k];
+          const f = t === T_WATER ? (this.waterFrame + tx + ty) & 1 : 0;
+          let img = this.pool[n];
+          if (!img) {
+            img = this.add.image(0, 0, 't0_0_0').setOrigin(0.5, 0).setDepth(0);
+            this.pool.push(img);
+          }
+          img.setTexture(`t${t}_${variant[k]}_${f}`).setPosition(sx, sy).setVisible(true);
+          n++;
+        }
+      }
+      for (let i = n; i < this.pool.length; i++) this.pool[i].setVisible(false);
+      body.dataset.visibleTiles = String(n);
+    }
+
+    update(time, delta) {
+      const cam = this.cameras.main;
+      const speed = (0.9 * delta) / cam.zoom;
+      const k = this.keys;
+      if (state.mode !== 'over' && !document.querySelector('.modal.show')) {
+        if (k.A.isDown || k.LEFT.isDown) cam.scrollX -= speed;
+        if (k.D.isDown || k.RIGHT.isDown) cam.scrollX += speed;
+        if (k.W.isDown || k.UP.isDown) cam.scrollY -= speed;
+        if (k.S.isDown || k.DOWN.isDown) cam.scrollY += speed;
+      }
+      this.clampCamera();
+      const sig = `${cam.scrollX | 0},${cam.scrollY | 0},${cam.zoom.toFixed(3)},${cam.width},${cam.height}`;
+      if (sig !== this.lastView || this.dirty) {
+        this.lastView = sig;
+        this.dirty = false;
+        this.redrawTiles();
+      }
+      for (const u of state.units) this.syncUnit(u, time);
+    }
+
+    syncUnit(u, time) {
+      if (!u.sprite) return;
+      const bob = u === state.selected && state.mode !== 'busy' ? Math.sin(time / 160) * 2 : 0;
+      u.sprite.setDepth(10 + u.sprite.y / HALF_H);
+      const x = u.sprite.x, y = u.sprite.y - 54 + bob;
+      u.bar.clear();
+      u.label.setPosition(x, y - 4).setVisible(u.alive);
+      if (!u.alive) return;
+      const r = u.parts.body.hp / u.parts.body.max;
+      u.bar.fillStyle(0x000000, 0.8).fillRect(x - 17, y, 34, 5);
+      u.bar.fillStyle(r > 0.6 ? 0x5fd3ff : r > 0.3 ? 0xffc83d : 0xff4f3d, 1).fillRect(x - 16, y + 1, 32 * r, 3);
+      u.sprite.setTint?.(u.team === 'player' && u.acted ? 0x808080 : 0xffffff);
+    }
+
+    /* ---------- highlights ---------- */
+
+    diamond(g, tx, ty, color, alpha, line) {
+      const x = (tx - ty) * HALF_W, y = (tx + ty) * HALF_H;
+      g.beginPath();
+      g.moveTo(x, y); g.lineTo(x + HALF_W, y + HALF_H); g.lineTo(x, y + TILE_H); g.lineTo(x - HALF_W, y + HALF_H);
+      g.closePath();
+      if (line) { g.lineStyle(2, color, alpha); g.strokePath(); } else { g.fillStyle(color, alpha); g.fillPath(); }
+    }
+
+    drawHighlights() {
+      const g = this.highlight;
+      g.clear();
+      const u = state.selected;
+      if (!u) return;
+      if (state.mode === 'move' && state.reach) {
+        for (const n of state.reach.values()) {
+          if (n.passOnly) continue;
+          this.diamond(g, n.tx, n.ty, 0x3d8bff, 0.42);
+        }
+      }
+      if (state.mode === 'target' && state.activeWeapon) {
+        const w = state.activeWeapon;
+        for (let dy = -w.max; dy <= w.max; dy++) {
+          for (let dx = -w.max; dx <= w.max; dx++) {
+            const d = Math.abs(dx) + Math.abs(dy);
+            if (!inRange(w, d)) continue;
+            const tx = u.tx + dx, ty = u.ty + dy;
+            if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
+            const occ = unitAt(tx, ty);
+            this.diamond(g, tx, ty, occ && occ.team === 'enemy' ? 0xff3d2e : 0xff7a5c, occ && occ.team === 'enemy' ? 0.6 : 0.25);
+          }
+        }
+      }
+      this.diamond(g, u.tx, u.ty, 0xffd76a, 1, true);
+    }
+
+    hoverTile(tx, ty) {
+      this.hover = { tx, ty };
+      const g = this.cursor;
+      g.clear();
+      if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return;
+      this.diamond(g, tx, ty, 0xffffff, 0.9, true);
+      showTerrain(tx, ty);
+      if (state.mode === 'busy' || state.mode === 'over') return;
+      const occ = unitAt(tx, ty);
+      if (state.mode === 'target') {
+        const u = state.selected, w = state.activeWeapon;
+        if (occ && occ.team === 'enemy' && inRange(w, manhattan(u, occ))) showForecast(u, occ, w);
+        else showForecast(null);
+      }
+      if (occ) showUnitPanel(occ);
+      else if (state.selected) showUnitPanel(state.selected);
+    }
+
+    /* ---------- player input ---------- */
+
+    clickTile(tx, ty) {
+      if (state.phase !== 'player' || state.mode === 'busy' || state.mode === 'over') return;
+      const occ = unitAt(tx, ty);
+
+      if (state.mode === 'move') {
+        const n = state.reach.get(key(tx, ty));
+        if (n && !n.passOnly) this.doMove(state.selected, tx, ty);
+        else if (!n) this.backToCommands();
+        return;
+      }
+      if (state.mode === 'target') {
+        const u = state.selected, w = state.activeWeapon;
+        if (occ && occ.team === 'enemy' && inRange(w, manhattan(u, occ))) this.doAttack(u, occ, w);
+        return;
+      }
+      if (state.mode === 'weapon') return;
+
+      if (occ && occ.team === 'player' && !occ.acted) { this.select(occ); return; }
+      if (occ) { showUnitPanel(occ); return; }
+      if (state.mode === 'selected' && state.selected && !state.selected.moved) this.deselect();
+    }
+
+    select(u) {
+      state.selected = u;
+      state.mode = 'selected';
+      state.undo = null;
+      this.cameras.main.pan(u.sprite.x, u.sprite.y, 260, 'Sine.easeInOut');
+      this.backToCommands();
+    }
+
+    deselect() {
+      state.selected = null;
+      state.mode = 'idle';
+      state.reach = null;
+      state.activeWeapon = null;
+      showMenu(null);
+      showForecast(null);
+      this.drawHighlights();
+      setBodyState();
+    }
+
+    backToCommands() {
+      const u = state.selected;
+      if (!u) return this.deselect();
+      state.mode = 'selected';
+      state.reach = null;
+      state.activeWeapon = null;
+      showForecast(null);
+      const canAttack = u.weapons.some((w) => weaponUsable(u, w) &&
+        alive('enemy').some((e) => inRange(w, manhattan(u, e))));
+      const damaged = PARTS.some((p) => u.parts[p].hp > 0 && u.parts[p].hp < u.parts[p].max);
+      showMenu(u.name, [
+        { id: 'move', label: 'Move', sub: `${moveOf(u)} move points`, disabled: u.moved, run: () => this.enterMove() },
+        { id: 'attack', label: 'Attack', sub: canAttack ? 'targets in range' : 'no target in range', disabled: !canAttack, run: () => this.enterWeapon() },
+        { id: 'repair', label: `Repair kit (${u.kits})`, sub: '+40 to every intact part', disabled: !u.kits || !damaged, run: () => this.doRepair(u) },
+        { id: 'wait', label: 'Wait', sub: 'end this rig’s action', run: () => this.finishUnit(u) },
+        { id: 'cancel', label: u.moved ? 'Undo move' : 'Cancel', run: () => this.cancel() },
+      ]);
+      showUnitPanel(u);
+      this.drawHighlights();
+      setBodyState();
+    }
+
+    enterMove() {
+      const u = state.selected;
+      state.mode = 'move';
+      state.reach = reachable(u);
+      showMenu(`${u.name} · MOVE`, [{ id: 'cancel', label: 'Back', run: () => this.backToCommands() }]);
+      this.drawHighlights();
+      setBodyState();
+    }
+
+    enterWeapon() {
+      const u = state.selected;
+      state.mode = 'weapon';
+      const enemies = alive('enemy');
+      showMenu(`${u.name} · WEAPON`, [
+        ...u.weapons.map((w, i) => {
+          const any = enemies.some((e) => inRange(w, manhattan(u, e)));
+          const usable = weaponUsable(u, w);
+          return {
+            id: `weapon-${w.id}`,
+            label: w.name,
+            sub: `${CLASS_LABEL[w.cls]} · rng ${w.min}-${w.max} · ${w.dmg}×${w.shots}` +
+              (w.ammoLeft === null ? '' : ` · ammo ${w.ammoLeft}`) +
+              (!usable ? (w.ammoLeft === 0 ? ' · EMPTY' : ' · ARM LOST') : !any ? ' · out of range' : ''),
+            disabled: !usable || !any,
+            run: () => this.enterTarget(w),
+          };
+        }),
+        { id: 'cancel', label: 'Back', run: () => this.backToCommands() },
+      ]);
+      setBodyState();
+    }
+
+    enterTarget(w) {
+      const u = state.selected;
+      state.mode = 'target';
+      state.activeWeapon = w;
+      showMenu(`${u.name} · TARGET`, [{ id: 'cancel', label: 'Back', run: () => this.enterWeapon() }]);
+      this.drawHighlights();
+      setBodyState();
+    }
+
+    cancel() {
+      if (state.phase !== 'player') return;
+      if (state.mode === 'move' || state.mode === 'weapon') return this.backToCommands();
+      if (state.mode === 'target') return this.enterWeapon();
+      if (state.mode === 'selected') {
+        const u = state.selected;
+        if (u.moved && state.undo && !u.acted) {
+          u.tx = state.undo.tx; u.ty = state.undo.ty; u.moved = false;
+          u.faceLeft = state.undo.faceLeft;
+          const c = tileCenter(u.tx, u.ty);
+          u.sprite.setPosition(c.x, c.y).setFlipX(u.faceLeft);
+          state.undo = null;
+          return this.backToCommands();
+        }
+        this.deselect();
+      }
+    }
+
+    cycleUnit() {
+      if (state.phase !== 'player' || !['idle', 'selected'].includes(state.mode)) return;
+      if (state.selected && state.selected.moved) return;
+      const ready = alive('player').filter((u) => !u.acted);
+      if (!ready.length) return;
+      const i = ready.indexOf(state.selected);
+      this.select(ready[(i + 1) % ready.length]);
+    }
+
+    async doMove(u, tx, ty) {
+      const path = pathTo(state.reach, tx, ty);
+      state.undo = { tx: u.tx, ty: u.ty, faceLeft: u.faceLeft };
+      state.mode = 'busy';
+      setBodyState();
+      showMenu(null);
+      this.highlight.clear();
+      await this.walk(u, path);
+      u.moved = true;
+      state.mode = 'selected';
+      this.backToCommands();
+    }
+
+    walk(u, path) {
+      return new Promise((resolve) => {
+        const steps = path.slice(1);
+        const next = () => {
+          const s = steps.shift();
+          if (!s) { resolve(); return; }
+          const c = tileCenter(s.tx, s.ty);
+          if (c.x !== u.sprite.x) { u.faceLeft = c.x < u.sprite.x; u.sprite.setFlipX(u.faceLeft); }
+          u.tx = s.tx; u.ty = s.ty;
+          this.tweens.add({ targets: u.sprite, x: c.x, y: c.y, duration: 120, onComplete: next });
+        };
+        next();
+      });
+    }
+
+    face(a, b) {
+      const ca = tileCenter(a.tx, a.ty), cb = tileCenter(b.tx, b.ty);
+      if (cb.x !== ca.x) { a.faceLeft = cb.x < ca.x; a.sprite.setFlipX(a.faceLeft); }
+    }
+
+    async doAttack(u, target, w) {
+      state.mode = 'busy';
+      setBodyState();
+      showMenu(null);
+      showForecast(null);
+      this.highlight.clear();
+      await this.fight(u, target, w);
+      if (u.alive) this.finishUnit(u); else this.afterAction();
+    }
+
+    doRepair(u) {
+      for (const p of PARTS) {
+        const part = u.parts[p];
+        if (part.hp > 0) part.hp = Math.min(part.max, part.hp + 40);
+      }
+      u.kits--;
+      this.floatText(u, '+REPAIR', '#7fffb0');
+      this.finishUnit(u);
+    }
+
+    finishUnit(u) {
+      u.acted = true;
+      u.moved = true;
+      state.undo = null;
+      this.deselect();
+      showUnitPanel(u);
+      this.afterAction();
+    }
+
+    afterAction() {
+      if (this.checkOutcome()) return;
+      setBodyState();
+      if (state.phase === 'player' && alive('player').every((x) => x.acted)) endPlayerPhase();
+    }
+
+    /* ---------- combat presentation ---------- */
+
+    async fight(att, def, w) {
+      this.face(att, def);
+      this.face(def, att);
+      const result = resolveBattle(att, def, w);
+      const mid = tileCenter((att.tx + def.tx) / 2, (att.ty + def.ty) / 2);
+      await new Promise((r) => this.cameras.main.pan(mid.x, mid.y, 250, 'Sine.easeInOut', false, (c, p) => p === 1 && r()));
+      if (state.battleAnim) {
+        body.dataset.battle = 'active';
+        await new Promise((resolve) => this.scene.launch('battle', { result, resolve }));
+        this.scene.stop('battle');
+        body.dataset.battle = 'idle';
+      } else {
+        for (const ex of result.exchanges) {
+          const hits = ex.shots.filter((s) => s.hit);
+          const total = hits.reduce((a, s) => a + s.dmg, 0);
+          this.floatText(ex.target, hits.length ? `-${total}` : 'MISS', hits.length ? '#ffd76a' : '#ffffff');
+          await this.wait(380);
+        }
+      }
+      for (const u of [att, def]) if (!u.alive) await this.destroyUnit(u);
+      showUnitPanel(att.alive ? att : def);
+      setBodyState();
+    }
+
+    wait(ms) { return new Promise((r) => this.time.delayedCall(ms, r)); }
+
+    floatText(u, text, color) {
+      const t = this.add.text(u.sprite.x, u.sprite.y - 60, text, {
+        fontFamily: 'ui-monospace, Consolas, monospace', fontSize: '16px', fontStyle: 'bold',
+        color, stroke: '#000', strokeThickness: 4,
+      }).setOrigin(0.5).setDepth(6000);
+      this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 900, onComplete: () => t.destroy() });
+    }
+
+    async destroyUnit(u) {
+      for (let i = 0; i < 6; i++) {
+        const c = this.add.circle(u.sprite.x + (Math.random() - 0.5) * 30, u.sprite.y - 20 - Math.random() * 30,
+          6 + Math.random() * 10, i % 2 ? 0xffb03b : 0xff5a2a).setDepth(6000);
+        this.tweens.add({ targets: c, scale: 2.6, alpha: 0, duration: 520, delay: i * 70, onComplete: () => c.destroy() });
+      }
+      await this.wait(380);
+      u.sprite.setVisible(false);
+      u.bar.clear().setVisible(false);
+      u.label.setVisible(false);
+      const wreck = this.add.ellipse(u.sprite.x, u.sprite.y, 30, 12, 0x1b1b1b, 0.7).setDepth(3);
+      u.wreck = wreck;
+    }
+
+    checkOutcome() {
+      if (state.outcome) return true;
+      const p = alive('player').length, e = alive('enemy').length;
+      if (p && e) return false;
+      state.outcome = e === 0 ? 'victory' : 'defeat';
+      state.mode = 'over';
+      setBodyState();
+      showMenu(null);
+      $('result-title').textContent = state.outcome === 'victory' ? 'MISSION COMPLETE' : 'MISSION FAILED';
+      $('result-title').style.color = state.outcome === 'victory' ? 'var(--fm-gold)' : 'var(--fm-red)';
+      $('result-text').textContent = state.outcome === 'victory'
+        ? `All hostiles neutralised on turn ${state.turn} with ${p} rig${p === 1 ? '' : 's'} still standing.`
+        : `Your squad was wiped out on turn ${state.turn}. ${e} hostile rig${e === 1 ? '' : 's'} remain.`;
+      bootstrap.Modal.getOrCreateInstance($('result-modal')).show();
+      return true;
+    }
+
+    refreshAll() {
+      setBodyState();
+      this.drawHighlights();
+    }
+
+    /* ---------- enemy phase ---------- */
+
+    async runEnemyPhase() {
+      for (const u of alive('enemy')) {
+        if (state.outcome) return;
+        if (!u.alive) continue;
+        const cam = this.cameras.main;
+        await new Promise((r) => cam.pan(u.sprite.x, u.sprite.y, 300, 'Sine.easeInOut', false, (c, p) => p === 1 && r()));
+        const plan = planEnemy(u);
+        state.selected = u;
+        if (plan.dest && (plan.dest.tx !== u.tx || plan.dest.ty !== u.ty)) {
+          await this.walk(u, pathTo(plan.reach, plan.dest.tx, plan.dest.ty));
+        }
+        if (plan.target && plan.target.alive && weaponUsable(u, plan.weapon) &&
+            inRange(plan.weapon, manhattan(u, plan.target))) {
+          await this.wait(200);
+          await this.fight(u, plan.target, plan.weapon);
+          if (this.checkOutcome()) return;
+        } else {
+          await this.wait(160);
+        }
+        state.selected = null;
+      }
+    }
+  }
+
+  /* =====================================================================
+     7. BattleScene  (side-view cut-in)
+     ===================================================================== */
+
+  const LOCAL = {
+    body: { x: 0, y: -82 }, armL: { x: -22, y: -84 }, armR: { x: 36, y: -80 }, legs: { x: 0, y: -26 },
+    muzzle: { short: { x: 90, y: -68 }, long: { x: -20, y: -140 }, melee: { x: 54, y: -56 } },
+  };
+
+  function battleSidePanel(u, before, weaponName) {
+    return `<div class="d-flex justify-content-between"><span style="color:var(--fm-gold)">${u.name}</span>
+      <span class="badge ${u.team === 'player' ? 'bg-primary' : 'bg-danger'}">${u.frameName}</span></div>
+      <div class="small text-info mb-1">${u.pilot}</div>
+      <div data-side-unit="${u.id}">${partRows(u, before)}</div>
+      <div class="small mt-1 text-secondary" data-role="weapon">${weaponName || '&nbsp;'}</div>`;
+  }
+
+  function updateBattleBar(u, part, hp) {
+    const row = document.querySelector(`[data-side-unit="${u.id}"] [data-part="${part}"]`);
+    if (!row) return;
+    const max = u.parts[part].max;
+    const ratio = hp / max;
+    row.dataset.hp = hp;
+    row.dataset.destroyed = String(hp <= 0);
+    const bar = row.querySelector('.progress-bar');
+    bar.style.width = `${ratio * 100}%`;
+    bar.className = `progress-bar ${barColor(ratio)}`;
+    row.querySelector('.val').textContent = hp <= 0 ? 'LOST' : `${hp}/${max}`;
+  }
+
+  class BattleScene extends Phaser.Scene {
+    constructor() { super('battle'); }
+
+    create({ result, resolve }) {
+      this.result = result;
+      this.speed = 1;
+      const W = this.scale.width, H = this.scale.height;
+      const S = clamp(H / 420, 0.9, 2.2);
+      this.S = S;
+
+      const def = result.def;
+      const terr = tileAt(def.tx, def.ty);
+      const [r, g, b] = TERRAIN[terr === T_WATER ? T_GRASS : terr].rgb;
+      const ground = Phaser.Display.Color.GetColor(r, g, b);
+      const groundDark = Phaser.Display.Color.GetColor(r * 0.6, g * 0.6, b * 0.6);
+
+      const bg = this.add.graphics();
+      const bands = [0x0b1838, 0x12234a, 0x1b3160, 0x274277, 0x36558c];
+      bands.forEach((c, i) => bg.fillStyle(c, 1).fillRect(0, (H * 0.62 * i) / bands.length, W, (H * 0.62) / bands.length + 1));
+      bg.fillStyle(0x1a2a44, 1);
+      for (let i = 0; i < 9; i++) {
+        const x = (i / 8) * W, h = 30 + ((i * 37) % 60);
+        bg.fillTriangle(x - 120, H * 0.62, x, H * 0.62 - h * S * 0.6, x + 120, H * 0.62);
+      }
+      bg.fillStyle(groundDark, 1).fillRect(0, H * 0.62, W, H * 0.38);
+      bg.fillStyle(ground, 1).fillRect(0, H * 0.62, W, H * 0.05);
+      for (let i = 0; i < 60; i++) {
+        bg.fillStyle(i % 2 ? ground : groundDark, 0.6).fillRect((i * 97) % W, H * 0.67 + ((i * 53) % (H * 0.3)), 18, 3);
+      }
+      // Cut-in frame lines
+      bg.lineStyle(3, 0x8fb3ff, 1).lineBetween(0, H * 0.06, W, H * 0.06).lineBetween(0, H * 0.94, W, H * 0.94);
+
+      this.groundY = H * 0.66;
+      this.rigs = {
+        [result.left.id]: this.buildRig(result.left, W * 0.27, this.groundY, false, result.before[result.left.id]),
+        [result.right.id]: this.buildRig(result.right, W * 0.73, this.groundY, true, result.before[result.right.id]),
+      };
+
+      $('bh-left').innerHTML = battleSidePanel(result.left, result.before[result.left.id]);
+      $('bh-right').innerHTML = battleSidePanel(result.right, result.before[result.right.id]);
+      $('bh-log').textContent = `${result.att.name} engages ${result.def.name}`;
+      $('battle-hud').hidden = false;
+      const skip = () => { this.speed = 6; };
+      $('btn-skip').onclick = skip;
+      this.input.on('pointerdown', skip);
+
+      this.cameras.main.fadeIn(180, 0, 0, 0);
+      this.play().then(() => {
+        $('battle-hud').hidden = true;
+        resolve();
+      });
+    }
+
+    wait(ms) { return new Promise((r) => this.time.delayedCall(ms / this.speed, r)); }
+
+    tween(cfg) {
+      return new Promise((r) => this.tweens.add({ ...cfg, duration: cfg.duration / this.speed, onComplete: r }));
+    }
+
+    buildRig(u, x, y, flip, hp) {
+      const c = TEAM_COLORS[u.team];
+      const col = (h) => Phaser.Display.Color.HexStringToColor(h).color;
+      const base = col(c.base), dark = col(c.dark), light = col(c.light);
+      const heavy = u.frameKey === 'bastion' ? 6 : 0;
+      const cont = this.add.container(x, y);
+      cont.setScale(flip ? -this.S : this.S, this.S);
+
+      const shadow = this.add.ellipse(0, 0, 110, 16, 0x000000, 0.4);
+      const armL = this.add.graphics();
+      armL.fillStyle(dark, 1).fillRect(-34 - heavy, -110, 18, 46).fillRect(-34 - heavy, -66, 16, 24);
+      const pod = u.weapons.some((w) => w.mount === 'shoulder');
+      const legs = this.add.graphics();
+      legs.fillStyle(dark, 1).fillRect(-26, -52, 18, 28).fillRect(4, -52, 18, 28);
+      legs.fillStyle(base, 1).fillRect(-28, -28, 21, 22).fillRect(3, -28, 21, 22);
+      legs.fillStyle(0x23262e, 1).fillRect(-36, -7, 32, 7).fillRect(-2, -7, 32, 7);
+      const torso = this.add.graphics();
+      if (pod) {
+        torso.fillStyle(dark, 1).fillRect(-40, -146, 34, 26);
+        torso.fillStyle(0x111111, 1);
+        for (let i = 0; i < 3; i++) torso.fillRect(-36 + i * 10, -140, 6, 6);
+      }
+      torso.fillStyle(base, 1).fillRect(-34 - heavy, -118, 66 + heavy * 2, 66);
+      torso.fillStyle(light, 1).fillRect(-30 - heavy, -114, 58 + heavy * 2, 10);
+      torso.fillStyle(0x7fe3ff, 1).fillRect(10, -98, 20, 12);
+      torso.fillStyle(dark, 1).fillRect(-30, -64, 60, 10);
+      torso.fillStyle(base, 1).fillRect(-12, -136, 26, 18);
+      torso.fillStyle(0xffd76a, 1).fillRect(6, -131, 8, 5);
+      torso.lineStyle(2, 0x000000, 0.6).strokeRect(-34 - heavy, -118, 66 + heavy * 2, 66);
+      const armR = this.add.graphics();
+      armR.fillStyle(base, 1).fillRect(24, -116, 24, 24).fillRect(30, -92, 18, 36);
+      armR.fillStyle(0x2b2f38, 1).fillRect(40, -74, 50, 10).fillRect(44, -58, 16, 14);
+      armR.lineStyle(2, 0x000000, 0.6).strokeRect(24, -116, 24, 24);
+
+      cont.add([shadow, armL, legs, torso, armR]);
+      const rig = { u, cont, parts: { armL, legs, body: torso, armR }, homeX: x, smoke: [] };
+      for (const p of ['armL', 'armR', 'legs']) if (hp[p] <= 0) this.breakPart(rig, p, true);
+      this.tweens.add({ targets: cont, y: y - 3, yoyo: true, repeat: -1, duration: 600, ease: 'Sine.easeInOut' });
+      return rig;
+    }
+
+    world(rig, p) {
+      return { x: rig.cont.x + p.x * rig.cont.scaleX, y: this.groundY + p.y * rig.cont.scaleY };
+    }
+
+    breakPart(rig, part, quiet) {
+      const g = rig.parts[part];
+      if (part !== 'body') g.setAlpha(0.22);
+      if (!quiet) this.boom(this.world(rig, LOCAL[part]), 1.2);
+      const ev = this.time.addEvent({
+        delay: 140, loop: true, callback: () => {
+          const p = this.world(rig, LOCAL[part]);
+          const s = this.add.circle(p.x + (Math.random() - 0.5) * 16, p.y, 5 + Math.random() * 6, 0x555555, 0.7);
+          this.tweens.add({ targets: s, y: s.y - 50 * this.S, scale: 2.2, alpha: 0, duration: 900, onComplete: () => s.destroy() });
+        },
+      });
+      rig.smoke.push(ev);
+    }
+
+    boom(p, size = 1) {
+      for (let i = 0; i < 5; i++) {
+        const c = this.add.circle(p.x + (Math.random() - 0.5) * 18 * size, p.y + (Math.random() - 0.5) * 18 * size,
+          (5 + Math.random() * 7) * size * this.S, i % 2 ? 0xffe08a : 0xff6a2a);
+        this.tweens.add({ targets: c, scale: 2.2, alpha: 0, duration: 380 / this.speed, delay: (i * 40) / this.speed, onComplete: () => c.destroy() });
+      }
+    }
+
+    popText(p, text, color) {
+      const t = this.add.text(p.x, p.y, text, {
+        fontFamily: 'ui-monospace, Consolas, monospace', fontSize: `${Math.round(20 * this.S)}px`, fontStyle: 'bold',
+        color, stroke: '#000', strokeThickness: 5,
+      }).setOrigin(0.5);
+      this.tweens.add({ targets: t, y: p.y - 44 * this.S, alpha: 0, delay: 250 / this.speed, duration: 700 / this.speed, onComplete: () => t.destroy() });
+    }
+
+    async play() {
+      await this.wait(450);
+      for (const ex of this.result.exchanges) {
+        const shooter = this.rigs[ex.shooter.id], target = this.rigs[ex.target.id];
+        const side = ex.shooter === this.result.left ? 'bh-left' : 'bh-right';
+        $(side).querySelector('[data-role="weapon"]').textContent =
+          `${ex.weapon.name} · hit ${ex.chance}%${ex.weapon.ammoLeft === null ? '' : ` · ammo ${ex.weapon.ammoLeft}`}`;
+        $('bh-log').textContent = ex === this.result.exchanges[0]
+          ? `${ex.shooter.name}: ${ex.weapon.name}!`
+          : `${ex.shooter.name} counterattacks with ${ex.weapon.name}!`;
+        await this.wait(300);
+        if (ex.weapon.cls === 'melee') await this.playMelee(shooter, target, ex);
+        else await this.playRanged(shooter, target, ex);
+        const hits = ex.shots.filter((s) => s.hit);
+        const dmg = hits.reduce((a, s) => a + s.dmg, 0);
+        $('bh-log').textContent = hits.length
+          ? `${hits.length}/${ex.shots.length} hits · ${dmg} damage to ${ex.target.name}`
+          : `${ex.target.name} evades every shot`;
+        await this.wait(650);
+      }
+      for (const rig of Object.values(this.rigs)) {
+        if (rig.u.alive) continue;
+        $('bh-log').textContent = `${rig.u.name} destroyed!`;
+        for (let i = 0; i < 4; i++) {
+          this.boom(this.world(rig, { x: (Math.random() - 0.5) * 60, y: -40 - Math.random() * 80 }), 2);
+          this.cameras.main.shake(160, 0.01);
+          await this.wait(160);
+        }
+        await this.tween({ targets: rig.cont, alpha: 0, duration: 400 });
+      }
+      await this.wait(500);
+      for (const rig of Object.values(this.rigs)) rig.smoke.forEach((e) => e.remove());
+      await new Promise((r) => { this.cameras.main.fadeOut(160 / this.speed, 0, 0, 0); this.cameras.main.once('camerafadeoutcomplete', r); });
+    }
+
+    applyShot(target, s) {
+      if (s.hit) {
+        const anchor = this.world(target, LOCAL[s.part]);
+        this.boom(anchor, 0.7);
+        this.popText(anchor, `${s.dmg}`, '#ffd76a');
+        this.cameras.main.shake(90, 0.005);
+        updateBattleBar(target.u, s.part, s.hp);
+        if (s.broke) {
+          this.breakPart(target, s.part);
+          this.popText({ x: anchor.x, y: anchor.y - 30 * this.S }, `${PART_LABEL[s.part]} LOST`, '#ff6b5b');
+        }
+      } else {
+        this.popText(this.world(target, LOCAL.body), 'MISS', '#ffffff');
+      }
+    }
+
+    async playRanged(shooter, target, ex) {
+      const long = ex.weapon.cls === 'long';
+      const m = this.world(shooter, LOCAL.muzzle[ex.weapon.cls]);
+      for (const s of ex.shots) {
+        const flash = this.add.circle(m.x, m.y, 9 * this.S, 0xfff2a8);
+        this.tweens.add({ targets: flash, alpha: 0, scale: 1.8, duration: 120 / this.speed, onComplete: () => flash.destroy() });
+        const end = s.hit
+          ? this.world(target, LOCAL[s.part])
+          : { x: target.cont.x + (target.cont.x > shooter.cont.x ? 1 : -1) * 260 * this.S, y: this.groundY - (40 + Math.random() * 140) * this.S };
+        const shot = long
+          ? this.add.rectangle(m.x, m.y, 18 * this.S, 7 * this.S, 0xdddddd)
+          : this.add.rectangle(m.x, m.y, 16 * this.S, 3 * this.S, 0xfff2a8);
+        if (long) {
+          const peak = Math.min(m.y, end.y) - 140 * this.S;
+          const prog = { t: 0 };
+          await this.tween({
+            targets: prog, t: 1, duration: 620,
+            onUpdate: () => {
+              const t = prog.t, it = 1 - t;
+              const x = it * it * m.x + 2 * it * t * ((m.x + end.x) / 2) + t * t * end.x;
+              const y = it * it * m.y + 2 * it * t * peak + t * t * end.y;
+              shot.setRotation(Math.atan2(y - shot.y, x - shot.x));
+              shot.setPosition(x, y);
+              if (Math.random() < 0.6) {
+                const puff = this.add.circle(x, y, 4 * this.S, 0xbbbbbb, 0.6);
+                this.tweens.add({ targets: puff, alpha: 0, scale: 2, duration: 400, onComplete: () => puff.destroy() });
+              }
+            },
+          });
+        } else {
+          shot.setRotation(Math.atan2(end.y - m.y, end.x - m.x));
+          await this.tween({ targets: shot, x: end.x, y: end.y, duration: 150 });
+        }
+        shot.destroy();
+        this.applyShot(target, s);
+        await this.wait(long ? 260 : 70);
+      }
+    }
+
+    async playMelee(shooter, target, ex) {
+      const dir = target.cont.x > shooter.cont.x ? 1 : -1;
+      const reach = target.cont.x - dir * 120 * this.S;
+      await this.tween({ targets: shooter.cont, x: reach, duration: 320, ease: 'Quad.easeIn' });
+      for (const s of ex.shots) {
+        await this.tween({ targets: shooter.parts.armR, x: 14, yoyo: true, duration: 90 });
+        this.applyShot(target, s);
+        await this.wait(150);
+      }
+      await this.tween({ targets: shooter.cont, x: shooter.homeX, duration: 380, ease: 'Quad.easeOut' });
+    }
+  }
+
+  return { MapScene, BattleScene };
+  }
+
+  /* =====================================================================
+     8. Turn flow and boot
+     ===================================================================== */
+
+  let mapScene = null;
+
+  async function endPlayerPhase() {
+    if (state.phase !== 'player' || state.mode === 'over') return;
+    mapScene.deselect();
+    state.phase = 'enemy';
+    state.mode = 'busy';
+    setBodyState();
+    banner('ENEMY PHASE', 'enemy');
+    await mapScene.wait(1100);
+    await mapScene.runEnemyPhase();
+    if (state.outcome) return;
+    state.turn++;
+    state.phase = 'player';
+    state.mode = 'idle';
+    state.selected = null;
+    for (const u of state.units) { u.moved = false; u.acted = false; }
+    setBodyState();
+    banner(`TURN ${state.turn} · PLAYER PHASE`, 'player');
+    const first = alive('player')[0];
+    if (first) mapScene.cameras.main.pan(first.sprite.x, first.sprite.y, 400, 'Sine.easeInOut');
+  }
+
+  function newMap() {
+    const url = new URL(location.href);
+    url.searchParams.set('seed', String(((Math.random() * 1e6) | 0) + 1));
+    location.href = url.toString();
+  }
+
+  function boot() {
+    if (typeof Phaser === 'undefined') {
+      $('overlay-title').hidden = true;
+      $('overlay-error').hidden = false;
+      body.dataset.boot = 'failed';
+      return;
+    }
+
+    $('seed-num').textContent = SEED;
+    $('title-seed').textContent = SEED;
+    const t0 = performance.now();
+    state.map = generateMap(SEED);
+    deploy();
+    buildMiniTerrain();
+    body.dataset.mapSize = String(MAP_SIZE);
+    body.dataset.genMs = String(Math.round(performance.now() - t0));
+
+    const { MapScene, BattleScene } = defineScenes();
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      backgroundColor: '#04070f',
+      scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+      scene: [],
+      render: { antialias: true },
+      // Game time follows the wall clock even on a slow GPU, so turns never drag.
+      fps: { smoothStep: false },
+    });
+    game.scene.add('map', MapScene, false);
+    game.scene.add('battle', BattleScene, false);
+
+    const start = $('btn-start');
+    start.disabled = false;
+    start.textContent = 'Deploy';
+    start.addEventListener('click', () => {
+      $('overlay-title').hidden = true;
+      for (const id of ['topbar', 'terrain-panel', 'minimap-panel']) $(id).hidden = false;
+      game.scene.start('map');
+      const waitScene = () => {
+        mapScene = game.scene.getScene('map');
+        if (!mapScene || !mapScene.pool) { requestAnimationFrame(waitScene); return; }
+        body.dataset.boot = 'ready';
+        banner('TURN 1 · PLAYER PHASE', 'player');
+      };
+      waitScene();
+    });
+
+    $('btn-end').addEventListener('click', () => endPlayerPhase());
+    $('toggle-anim').addEventListener('change', (e) => { state.battleAnim = e.target.checked; });
+    $('btn-help').addEventListener('click', () => bootstrap.Modal.getOrCreateInstance($('help-modal')).show());
+    $('btn-again').addEventListener('click', newMap);
+
+    // Test and debugging hook. Read-only helpers; the game never depends on it.
+    window.__rig = {
+      state,
+      terrainCounts() {
+        const c = [0, 0, 0];
+        for (const t of state.map.tiles) c[t]++;
+        return { grass: c[0], badland: c[1], water: c[2] };
+      },
+      unitScreen(id) {
+        const u = state.units.find((x) => x.id === id);
+        return mapScene.tileScreen(u.tx, u.ty);
+      },
+      tileScreen: (tx, ty) => mapScene.tileScreen(tx, ty),
+    };
+    body.dataset.boot = 'title';
+  }
+
+  $('btn-newmap').addEventListener('click', newMap);
+
+  function loadFallback() {
+    const script = document.createElement('script');
+    script.src = '/vendor/phaser-4.2.1/phaser.min.js';
+    script.onload = boot;
+    script.onerror = boot;
+    document.head.appendChild(script);
+  }
+
+  // Bootstrap's JS loads after this script; wait for it before booting.
+  window.addEventListener('load', () => {
+    if (window.Phaser) boot();
+    else loadFallback();
+  });
+  })();
+  </script>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    onerror="this.onerror=null;this.src='/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js'"
+  ></script>
+</body>
+</html>
