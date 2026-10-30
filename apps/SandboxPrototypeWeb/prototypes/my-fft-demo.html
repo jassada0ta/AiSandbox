@@ -1,0 +1,2202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="PS1-era tactical RPG prototype in the style of classic isometric job-class tactics games: a 512x512 isometric height map of grassland, badland and water, charge-time turn order, Move/Act/Wait menus, facing and back attacks, Brave and Faith, charged area spells, KO countdowns and a rotatable camera. Single file using Phaser 4 and Bootstrap 5.3 from CDNs."
+  />
+  <title>Ashen Banner: Tactics Chronicle</title>
+
+  <!--
+    Self-contained prototype. One file, vanilla JS, no build step.
+
+      - Phaser 4      -> isometric renderer, camera, tweens, input picking
+      - Bootstrap 5.3 -> menus, panels, progress bars and modals
+
+    Both come from a CDN as asked for, and both fall back to the copies
+    vendored under /vendor/ so the page still renders offline and in CI —
+    Bootstrap through an `onerror` attribute, Phaser through `loadFallback()`
+    at the bottom of the script.
+
+    All art is painted procedurally into canvases at boot and registered as
+    Phaser textures, so the page makes no image requests.
+
+    The game is an original take on the PS1 job-class tactics genre:
+      - Charge Time: every clock tick each unit gains CT equal to its Speed;
+        at 100 CT it takes a turn. Moving and acting cost CT (100 / 80 / 60).
+      - A turn is Move + Act in either order, then Wait and pick a facing.
+      - Facing matters: front attacks are evaded, side half, back never.
+      - Height: Jump limits climbing, bows reach further from high ground.
+      - Spells charge for several ticks and land on a tile, so targets can
+        walk out of them. Damage scales with Faith; fists scale with Brave.
+      - A unit at 0 HP is KO'd and turns to crystal after three of its turns
+        unless revived.
+
+    Reading order of the script:
+      1. constants, data tables, rng/noise
+      2. map generation + battle-site deployment
+      3. procedural art
+      4. rules: movement, ranges, damage, the CT clock
+      5. the Phaser scene: culling renderer, rotation, picking, animation
+      6. DOM interface: panels, menus, turn order, minimap
+      7. turn flow, enemy AI
+      8. boot
+  -->
+
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    onerror="this.onerror=null;this.href='/vendor/bootstrap-5.3.3/bootstrap.min.css'"
+  />
+
+  <style>
+    :root {
+      --ff-panel-top: #34509a;
+      --ff-panel-bot: #101c4a;
+      --ff-edge: #e8dcb0;
+      --ff-edge-dim: #8e8564;
+      --ff-gold: #ffe08a;
+      --ff-text: #f6f3ea;
+      --ff-ally: #6fb6ff;
+      --ff-enemy: #ff7a6a;
+      --ff-font: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    }
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #000; }
+    body { font-family: var(--ff-font); color: var(--ff-text); user-select: none; }
+    #game { position: fixed; inset: 0; }
+    #game canvas { display: block; }
+
+    /* The signature blue window: gradient fill, cream double edge. */
+    .ff-panel {
+      position: fixed; z-index: 10;
+      background: linear-gradient(180deg, var(--ff-panel-top), var(--ff-panel-bot));
+      border: 2px solid var(--ff-edge);
+      outline: 1px solid #000; box-shadow: inset 0 0 0 2px #1a2558, 0 4px 14px rgba(0,0,0,.6);
+      border-radius: 7px; padding: 8px 12px;
+      text-shadow: 1px 1px 0 #000, 0 0 2px #000;
+      font-size: 14px;
+    }
+    .ff-panel[hidden] { display: none !important; }
+    .ff-title { color: var(--ff-gold); letter-spacing: .08em; font-size: 12px; text-transform: uppercase; }
+
+    .prototype-back {
+      position: fixed; left: 10px; bottom: 6px; z-index: 60; font-size: 12px;
+      color: #c9c2a4; text-decoration: none; text-shadow: 1px 1px 0 #000;
+    }
+    .prototype-back:hover { color: #fff; }
+
+    /* Top bar */
+    #topbar { top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; padding: 5px 10px; }
+    #topbar .btn { font-family: var(--ff-font); }
+    #topbar .form-check-label { font-size: 12px; }
+    #clock { color: var(--ff-gold); min-width: 82px; text-align: center; font-size: 13px; }
+
+    /* Turn order (AT list) */
+    #turn-order { top: 8px; left: 8px; width: 186px; padding: 6px 8px; }
+    #turn-order ol { list-style: none; margin: 4px 0 0; padding: 0; }
+    #turn-order li {
+      display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; font-size: 13px;
+      border-left: 3px solid transparent; line-height: 1.25;
+    }
+    #turn-order li.ally { border-left-color: var(--ff-ally); }
+    #turn-order li.enemy { border-left-color: var(--ff-enemy); }
+    #turn-order li.spell { color: #ffd6a0; font-style: italic; }
+    #turn-order li.now { background: rgba(255, 224, 138, .18); }
+    #turn-order li canvas { width: 20px; height: 28px; image-rendering: pixelated; }
+    #turn-order li .at { margin-left: auto; color: #b8b2a0; font-size: 11px; }
+
+    /* Unit panels */
+    .unit-card { width: 330px; display: grid; grid-template-columns: 74px 1fr; gap: 4px 10px; padding: 8px 10px; }
+    #active-panel { left: 8px; bottom: 26px; }
+    #target-panel { right: 8px; bottom: 26px; }
+    .unit-card .portrait {
+      grid-row: span 2; width: 74px; height: 96px; border: 2px solid var(--ff-edge-dim); border-radius: 5px;
+      background: radial-gradient(circle at 50% 35%, #4d6bb8, #0b1236); image-rendering: pixelated;
+    }
+    .unit-card .name { font-size: 17px; color: #fff; line-height: 1.1; }
+    .unit-card .job { font-size: 12px; color: var(--ff-gold); }
+    .unit-card .team-ally .name { color: #d8ecff; }
+    .unit-card .team-enemy .name { color: #ffd2cb; }
+    .bars { display: grid; grid-template-columns: 26px 1fr 70px; gap: 1px 6px; align-items: center; font-size: 12px; }
+    .bars .progress { height: 8px; background: #050a20; border: 1px solid #6a6550; border-radius: 2px; }
+    .bars .progress-bar { transition: width .25s; }
+    .bars .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar-hp .progress-bar { background: linear-gradient(#9cf58a, #2f9c3b); }
+    .bar-mp .progress-bar { background: linear-gradient(#a6d4ff, #2a6fd6); }
+    .bar-ct .progress-bar { background: linear-gradient(#ffe89a, #c7901f); }
+    .stats-line { grid-column: span 2; font-size: 12px; color: #d8d2bc; display: flex; gap: 10px; flex-wrap: wrap; }
+    .stats-line b { color: #fff; font-weight: normal; }
+    .tag { font-size: 11px; padding: 0 5px; border-radius: 3px; background: rgba(0,0,0,.4); border: 1px solid #8e8564; }
+    .tag.ko { color: #ff9c9c; border-color: #ff9c9c; }
+    .tag.charge { color: #ffd6a0; border-color: #ffd6a0; }
+
+    /* Command menu */
+    #cmd-menu { right: 16px; top: 34%; width: 180px; padding: 6px; }
+    #cmd-menu .list-group-item {
+      background: transparent; color: var(--ff-text); border: 0; padding: 4px 10px 4px 22px; font-family: var(--ff-font);
+      font-size: 16px; text-shadow: 1px 1px 0 #000; position: relative; border-radius: 4px;
+    }
+    #cmd-menu .list-group-item:hover:not(:disabled), #cmd-menu .list-group-item:focus-visible {
+      background: rgba(255, 255, 255, .12); color: #fff;
+    }
+    #cmd-menu .list-group-item:hover:not(:disabled)::before {
+      content: '\25B6'; position: absolute; left: 6px; font-size: 10px; top: 9px; color: var(--ff-gold);
+    }
+    #cmd-menu .list-group-item:disabled { color: #7d7a6d; }
+    #cmd-menu .cost { float: right; font-size: 11px; color: #a6d4ff; margin-top: 4px; }
+    #cmd-help { font-size: 11px; color: #c9c2a4; padding: 2px 8px 0; }
+
+    /* Facing chooser */
+    #facing-panel { right: 16px; top: 34%; width: 180px; text-align: center; }
+    #facing-panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+    #facing-panel .btn { font-family: var(--ff-font); }
+    #facing-panel .btn.active { background: var(--ff-gold); color: #222; border-color: var(--ff-gold); }
+
+    /* Tile info */
+    #tile-panel { top: 8px; right: 8px; min-width: 176px; padding: 6px 10px; }
+    #tile-panel .h { font-size: 22px; color: #fff; }
+    #minimap-panel { top: 76px; right: 8px; padding: 5px; }
+    #minimap { width: 176px; height: 176px; display: block; cursor: crosshair; image-rendering: pixelated; border: 1px solid #000; }
+
+    /* Forecast */
+    #forecast { left: 50%; bottom: 26px; transform: translateX(-50%); min-width: 170px; text-align: center; padding: 6px 14px; }
+    #forecast .hit { font-size: 22px; color: var(--ff-gold); }
+    #forecast .eff { font-size: 15px; }
+
+    /* Log line */
+    #log { top: 54px; left: 50%; transform: translateX(-50%); min-width: 320px; max-width: 70vw; text-align: center; padding: 5px 16px; }
+
+    /* Banner */
+    #banner {
+      position: fixed; top: 40%; left: 0; right: 0; z-index: 30; text-align: center; pointer-events: none;
+      font-size: 34px; letter-spacing: .16em; color: #fff; opacity: 0; transition: opacity .25s;
+      text-shadow: 2px 2px 0 #000, 0 0 14px rgba(60, 110, 255, .9);
+    }
+    #banner.show { opacity: 1; }
+    #banner.enemy { text-shadow: 2px 2px 0 #000, 0 0 14px rgba(255, 60, 60, .9); }
+
+    /* Overlays */
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, rgba(28, 40, 90, .88), rgba(0, 0, 0, .97));
+    }
+    .overlay[hidden] { display: none; }
+    .overlay .ff-panel { position: static; max-width: 640px; padding: 22px 28px; }
+    .overlay h2 { color: var(--ff-gold); letter-spacing: .14em; font-size: 30px; }
+    .overlay .tagline { color: #c9d6ff; letter-spacing: .25em; font-size: 12px; text-transform: uppercase; }
+    .overlay .btn { font-family: var(--ff-font); }
+    .modal-content { background: linear-gradient(180deg, var(--ff-panel-top), var(--ff-panel-bot)); color: var(--ff-text); border: 2px solid var(--ff-edge); font-family: var(--ff-font); }
+    .modal-content .btn-close { filter: invert(1); }
+    .modal-content table { color: var(--ff-text); }
+    .kbd { border: 1px solid var(--ff-edge-dim); padding: 0 5px; border-radius: 3px; color: var(--ff-gold); font-size: 12px; }
+  </style>
+</head>
+<body data-boot="loading" data-mode="idle" data-side="" data-active="" data-result="" data-rot="0">
+  <h1 class="visually-hidden">Ashen Banner: Tactics Chronicle</h1>
+  <a class="prototype-back" href="/">&larr; All prototypes</a>
+
+  <div id="game" data-testid="game-host"></div>
+
+  <div id="topbar" class="ff-panel" data-testid="topbar" hidden>
+    <span id="clock" data-testid="clock">Tick 0</span>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Rotate camera">
+      <button class="btn btn-outline-light" id="btn-rot-l" data-testid="rotate-left" type="button" title="Rotate (Q)">&#x27F2;</button>
+      <button class="btn btn-outline-light" id="btn-rot-r" data-testid="rotate-right" type="button" title="Rotate (E)">&#x27F3;</button>
+    </div>
+    <button class="btn btn-sm btn-outline-light" id="btn-center" data-testid="center-active" type="button" title="Centre on active unit (C)">Centre</button>
+    <div class="form-check form-switch m-0">
+      <input class="form-check-input" type="checkbox" role="switch" id="toggle-fast" data-testid="toggle-fast" />
+      <label class="form-check-label" for="toggle-fast">Fast</label>
+    </div>
+    <button class="btn btn-sm btn-outline-warning" id="btn-help" data-testid="help" type="button">? Help</button>
+  </div>
+
+  <div id="turn-order" class="ff-panel" data-testid="turn-order" hidden>
+    <div class="ff-title">Turn order</div>
+    <ol id="turn-list"></ol>
+  </div>
+
+  <div id="log" class="ff-panel" data-testid="battle-log" hidden>&nbsp;</div>
+
+  <div id="tile-panel" class="ff-panel" data-testid="tile-panel" hidden>
+    <div class="ff-title">Terrain</div>
+    <div><span id="tile-type" data-testid="terrain-type">-</span> &middot; <span class="h">h<span id="tile-h" data-testid="tile-height">0</span></span></div>
+    <div style="font-size:11px;color:#c9c2a4" id="tile-xy">-</div>
+  </div>
+
+  <div id="minimap-panel" class="ff-panel" data-testid="minimap-panel" hidden>
+    <canvas id="minimap" data-testid="minimap" width="512" height="512" title="Click to look there"></canvas>
+  </div>
+
+  <div id="active-panel" class="ff-panel unit-card" data-testid="unit-panel" data-unit="" hidden></div>
+  <div id="target-panel" class="ff-panel unit-card" data-testid="target-panel" data-unit="" hidden></div>
+
+  <div id="forecast" class="ff-panel" data-testid="forecast" hidden>
+    <div class="ff-title" id="fc-name">Attack</div>
+    <div class="hit" id="fc-hit" data-testid="forecast-hit">-</div>
+    <div class="eff" id="fc-eff" data-testid="forecast-effect">-</div>
+  </div>
+
+  <div id="cmd-menu" class="ff-panel" data-testid="command-menu" hidden>
+    <div class="ff-title px-2" id="cmd-title">Command</div>
+    <div class="list-group" id="cmd-list"></div>
+    <div id="cmd-help"></div>
+  </div>
+
+  <div id="facing-panel" class="ff-panel" data-testid="facing-panel" hidden>
+    <div class="ff-title">Choose facing</div>
+    <div class="grid">
+      <button class="btn btn-sm btn-outline-light" data-face="nw" data-testid="face-nw" type="button">&#x2196;</button>
+      <button class="btn btn-sm btn-outline-light" data-face="ne" data-testid="face-ne" type="button">&#x2197;</button>
+      <button class="btn btn-sm btn-outline-light" data-face="sw" data-testid="face-sw" type="button">&#x2199;</button>
+      <button class="btn btn-sm btn-outline-light" data-face="se" data-testid="face-se" type="button">&#x2198;</button>
+    </div>
+    <button class="btn btn-sm btn-warning w-100" id="btn-face-ok" data-testid="face-confirm" type="button">Confirm</button>
+    <div style="font-size:11px;color:#c9c2a4;margin-top:4px">Arrows / click a tile, <span class="kbd">Enter</span></div>
+  </div>
+
+  <div id="banner" data-testid="banner"></div>
+
+  <div class="overlay" id="overlay-title" data-testid="title-screen">
+    <div class="ff-panel text-center">
+      <div class="tagline">A chronicle of the Ashen Banner</div>
+      <h2 class="my-2">ASHEN BANNER</h2>
+      <p class="mb-2" style="color:#d8d2bc">
+        The Vale of Corwen, a highland of grass, red badland and cold lakes &mdash; 512&times;512 tiles of it.
+        Five of the Ashen Banner meet the Thornwake raiders at a ford.
+      </p>
+      <p class="mb-3" style="font-size:13px;color:#b8c4e8">
+        Turns follow Charge Time. Strike from behind, hold the high ground, and mind the casters &mdash;
+        their spells land several ticks after they begin.
+      </p>
+      <div class="d-flex gap-2 justify-content-center">
+        <button class="btn btn-warning px-4" id="btn-start" data-testid="start" type="button" disabled>Loading&hellip;</button>
+        <button class="btn btn-outline-light" id="btn-title-help" type="button">How to play</button>
+      </div>
+      <div class="mt-3" style="font-size:11px;color:#9a9480">Map seed <span id="title-seed">-</span> &middot; add <code>?seed=N</code> to change it</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-result" data-testid="result-screen" hidden>
+    <div class="ff-panel text-center">
+      <h2 id="result-title" data-testid="result-title">VICTORY</h2>
+      <p id="result-text" class="mb-3"></p>
+      <button class="btn btn-warning" id="btn-again" data-testid="play-again" type="button">New battle</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay-error" hidden>
+    <div class="ff-panel text-center">
+      <h2>Engine unavailable</h2>
+      <p>Phaser could not be loaded from the CDN or from <code>/vendor/phaser-4.2.1/</code>.</p>
+    </div>
+  </div>
+
+  <div class="modal fade" id="help-modal" tabindex="-1" aria-labelledby="help-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="help-title">How to play</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" style="font-size:14px">
+          <p><b>Charge Time.</b> Every tick each unit gains CT equal to its Speed. At 100 CT it acts. Ending a turn
+            costs 100 CT if you moved and acted, 80 if you did one, 60 if you only waited &mdash; so waiting brings
+            your next turn sooner.</p>
+          <p><b>Your turn.</b> <i>Move</i> and <i>Act</i> once each in any order, then <i>Wait</i> and choose which way
+            to face.</p>
+          <p><b>Facing.</b> Attacks from the front can be evaded, from the side half as often, from behind never.</p>
+          <p><b>Height.</b> <i>Jump</i> is the largest step up or down a unit can take. Bows reach one tile further for
+            every two levels of height over the target. Melee cannot reach more than 3 levels up or down. Water cannot be
+            entered.</p>
+          <p><b>Spells</b> charge for several ticks (watch the turn order) and land on a tile: anyone standing in the area
+            when it resolves is hit, so targets can walk out. Spell power scales with the Faith of both caster and target.
+            Fists scale with Brave, and units with <i>Counter</i> strike back at Brave% odds.</p>
+          <p><b>KO.</b> At 0 HP a unit falls. After three of its turns it turns to crystal and is lost. A Chaplain's
+            <i>Revive</i> brings it back.</p>
+          <table class="table table-sm table-borderless mb-0" style="font-size:13px">
+            <tr><td><span class="kbd">Click</span></td><td>select / confirm</td><td><span class="kbd">Right-click</span> <span class="kbd">Esc</span></td><td>back</td></tr>
+            <tr><td><span class="kbd">WASD</span> / drag</td><td>pan</td><td><span class="kbd">Wheel</span></td><td>zoom</td></tr>
+            <tr><td><span class="kbd">Q</span> <span class="kbd">E</span></td><td>rotate the view</td><td><span class="kbd">C</span></td><td>centre on active unit</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="status-modal" tabindex="-1" aria-labelledby="status-title" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="status-title">Status</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="status-body" data-testid="status-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@4.2.1/dist/phaser.min.js"></script>
+
+  <script>
+  (function main() {
+  'use strict';
+
+  /* =====================================================================
+     1. Constants, data tables, rng / noise
+     ===================================================================== */
+
+  const MAP = 512;
+  const TILE_W = 64, TILE_H = 32, HW = 32, HH = 16;
+  const HPX = 8;              // pixels per height level
+  const MAXH = 12;            // tallest land level
+  const SIDE = MAXH * HPX + 24;
+  const T_GRASS = 0, T_BAD = 1, T_WATER = 2;
+  const TERRAIN_NAME = ['Grassland', 'Badland', 'Water'];
+
+  const params = new URLSearchParams(location.search);
+  const SEED = Number(params.get('seed')) || (Math.floor(Math.random() * 1e6) + 1);
+
+  const $ = (id) => document.getElementById(id);
+  const body = document.body;
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const idx = (x, y) => y * MAP + x;
+  const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
+  const manhattan = (a, b) => Math.abs(a.tx - b.tx) + Math.abs(a.ty - b.ty);
+
+  // Directions in tile space. Screen direction depends on camera rotation.
+  const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
+  const JOBS = {
+    sentinel: { name: 'Sentinel', hp: 132, mp: 12, pa: 9, ma: 5, spd: 7, move: 4, jump: 3, weapon: 'sword', wp: 6, ev: 20, faith: [45, 60], skills: ['shove'], counter: true, body: '#9aa3b4', hair: '#6b4a2a' },
+    ranger:   { name: 'Ranger',   hp: 104, mp: 14, pa: 8, ma: 5, spd: 8, move: 4, jump: 4, weapon: 'bow',   wp: 5, ev: 14, faith: [45, 60], skills: ['aimed'], body: '#4f8a3c', hair: '#c9a24a' },
+    chaplain: { name: 'Chaplain', hp: 92,  mp: 52, pa: 5, ma: 9, spd: 6, move: 3, jump: 3, weapon: 'staff', wp: 4, ev: 8,  faith: [62, 78], skills: ['mend', 'revive'], body: '#ece6d6', hair: '#3a2a1e' },
+    arcanist: { name: 'Arcanist', hp: 82,  mp: 56, pa: 4, ma: 11, spd: 6, move: 3, jump: 3, weapon: 'rod',  wp: 3, ev: 8,  faith: [64, 80], skills: ['ember', 'tempest'], body: '#5a3f8c', hair: '#d7d7e8' },
+    brawler:  { name: 'Brawler',  hp: 122, mp: 10, pa: 10, ma: 4, spd: 7, move: 4, jump: 4, weapon: 'fist', wp: 0, ev: 12, faith: [40, 55], skills: ['pulse', 'secondwind'], counter: true, body: '#b98a52', hair: '#2a1a12' },
+  };
+
+  // kind: phys (weapon formula x mult), mag (faith formula), heal, raise.
+  // range 'weapon' defers to the weapon's range. ctr = charge ticks.
+  const SKILLS = {
+    attack:     { name: 'Attack',       kind: 'phys', range: 'weapon', aoe: 0, mp: 0, ctr: 0, mult: 1 },
+    shove:      { name: 'Shield Shove', kind: 'phys', range: { min: 1, max: 1 }, aoe: 0, mp: 0, ctr: 0, mult: 0.6, push: true, fx: 0xd0d6e0 },
+    aimed:      { name: 'Aimed Shot',   kind: 'phys', range: 'weapon', aoe: 0, mp: 0, ctr: 4, mult: 1.8, fx: 0xfff2a0 },
+    mend:       { name: 'Mend',         kind: 'heal', range: { min: 0, max: 4 }, aoe: 1, mp: 6, ctr: 3, pow: 14, fx: 0x7dff9a },
+    revive:     { name: 'Revive',       kind: 'raise', range: { min: 1, max: 4 }, aoe: 0, mp: 12, ctr: 6, fx: 0xffe08a },
+    ember:      { name: 'Ember',        kind: 'mag',  range: { min: 1, max: 4 }, aoe: 1, mp: 6, ctr: 4, pow: 15, fx: 0xff7a2a },
+    tempest:    { name: 'Tempest',      kind: 'mag',  range: { min: 1, max: 5 }, aoe: 2, mp: 16, ctr: 8, pow: 19, fx: 0xb07aff },
+    pulse:      { name: 'Earth Pulse',  kind: 'phys', range: { min: 2, max: 3 }, aoe: 0, mp: 0, ctr: 0, mult: 0.75, noEvade: true, fx: 0xc8a060 },
+    secondwind: { name: 'Second Wind',  kind: 'heal', range: { min: 0, max: 0 }, aoe: 1, mp: 0, ctr: 0, paHeal: 5, fx: 0x9cf5ff },
+  };
+
+  const WEAPON_RANGE = { sword: { min: 1, max: 1 }, fist: { min: 1, max: 1 }, staff: { min: 1, max: 1 }, rod: { min: 1, max: 1 }, bow: { min: 2, max: 5 } };
+  const MELEE_VERT = 3;
+  const AOE_VERT = 3;
+
+  const ALLY_ROSTER = [
+    { id: 'a1', name: 'Oren',   job: 'sentinel' },
+    { id: 'a2', name: 'Maelis', job: 'ranger' },
+    { id: 'a3', name: 'Tobin',  job: 'brawler' },
+    { id: 'a4', name: 'Sera',   job: 'chaplain' },
+    { id: 'a5', name: 'Iver',   job: 'arcanist' },
+  ];
+  const ENEMY_ROSTER = [
+    { id: 'e1', name: 'Kett',   job: 'sentinel' },
+    { id: 'e2', name: 'Brask',  job: 'brawler' },
+    { id: 'e3', name: 'Ilsa',   job: 'ranger' },
+    { id: 'e4', name: 'Morrow', job: 'ranger' },
+    { id: 'e5', name: 'Vesk',   job: 'arcanist' },
+    { id: 'e6', name: 'Hale',   job: 'chaplain' },
+  ];
+
+  function mulberry32(a) {
+    return function next() {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hash2(x, y, s) {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 982451653)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  function vnoise(x, y, s) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s), c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y, s, oct) {
+    let t = 0, amp = 1, f = 1, n = 0;
+    for (let i = 0; i < oct; i++) { t += vnoise(x * f, y * f, s + i * 131) * amp; n += amp; amp *= 0.5; f *= 2; }
+    return t / n;
+  }
+
+  /* =====================================================================
+     2. Map generation and deployment
+     ===================================================================== */
+
+  function generateMap(seed) {
+    const type = new Uint8Array(MAP * MAP);
+    const height = new Uint8Array(MAP * MAP);
+    const variant = new Uint8Array(MAP * MAP);
+    const s1 = seed * 7 + 1, s2 = seed * 13 + 5;
+    for (let y = 0; y < MAP; y++) {
+      for (let x = 0; x < MAP; x++) {
+        const k = idx(x, y);
+        const e = fbm(x / 56, y / 56, s1, 5);
+        const m = fbm(x / 80 + 40, y / 80 + 40, s2, 4);
+        const jitter = hash2(x, y, seed);
+        variant[k] = (jitter * 4) | 0;
+        if (e < 0.4) { type[k] = T_WATER; height[k] = 0; continue; }
+        const rugged = m < 0.4 || e > 0.72;
+        type[k] = rugged ? T_BAD : T_GRASS;
+        let h = 1 + Math.floor(((e - 0.4) / 0.36) * (MAXH - 1));
+        if (rugged && jitter > 0.82) h += 1;     // broken, rocky ground
+        height[k] = clamp(h, 1, MAXH);
+      }
+    }
+    return { type, height, variant };
+  }
+
+  const state = {
+    map: null,
+    units: [],
+    pending: [],        // charged actions waiting to resolve
+    tick: 0,
+    active: null,
+    mode: 'idle',
+    reach: null,
+    targets: null,
+    skill: null,
+    hover: null,
+    fast: false,
+    over: false,
+    site: null,
+    facingChoice: 0,
+  };
+
+  const tType = (x, y) => state.map.type[idx(x, y)];
+  const tH = (x, y) => state.map.height[idx(x, y)];
+  const walkable = (x, y) => inMap(x, y) && tType(x, y) !== T_WATER;
+  const unitAt = (x, y) => state.units.find((u) => u.tx === x && u.ty === y && !u.crystal);
+  const standing = (u) => !u.ko && !u.crystal;
+  const living = (team) => state.units.filter((u) => u.team === team && standing(u));
+
+  function makeUnit(def, team, rnd, tx, ty) {
+    const j = JOBS[def.job];
+    const lv = team === 'ally' ? 5 : 4 + Math.floor(rnd() * 3);
+    const hp = j.hp + Math.floor(rnd() * 12) + (lv - 5) * 6;
+    return {
+      id: def.id, name: def.name, job: def.job, team, lv, exp: Math.floor(rnd() * 40),
+      maxHp: hp, hp, maxMp: j.mp, mp: j.mp,
+      pa: j.pa, ma: j.ma, spd: j.spd + (rnd() < 0.3 ? 1 : 0), move: j.move, jump: j.jump,
+      brave: 55 + Math.floor(rnd() * 26), faith: j.faith[0] + Math.floor(rnd() * (j.faith[1] - j.faith[0] + 1)),
+      ct: Math.floor(rnd() * 40), tx, ty, face: team === 'ally' ? 0 : 2,
+      ko: false, koCount: 0, crystal: false, charging: null, moved: false, acted: false,
+    };
+  }
+
+  // Breadth-first walk over land honouring a jump limit, used to make sure the
+  // two squads can actually reach each other before a site is accepted.
+  function connected(a, b, jump, limit) {
+    const seen = new Set([idx(a.x, a.y)]);
+    let frontier = [a];
+    for (let step = 0; step < limit && frontier.length; step++) {
+      const next = [];
+      for (const p of frontier) {
+        if (p.x === b.x && p.y === b.y) return true;
+        for (const [dx, dy] of DIRS) {
+          const nx = p.x + dx, ny = p.y + dy;
+          if (!walkable(nx, ny) || seen.has(idx(nx, ny))) continue;
+          if (Math.abs(tH(nx, ny) - tH(p.x, p.y)) > jump) continue;
+          seen.add(idx(nx, ny));
+          next.push({ x: nx, y: ny });
+        }
+      }
+      frontier = next;
+    }
+    return false;
+  }
+
+  function nearestFree(x, y, taken) {
+    for (let r = 0; r < 12; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const nx = x + dx, ny = y + dy;
+          if (walkable(nx, ny) && !taken.has(idx(nx, ny))) return { x: nx, y: ny };
+        }
+      }
+    }
+    return null;
+  }
+
+  function deploy() {
+    const rnd = mulberry32(SEED * 31 + 7);
+    let site = null;
+    for (let attempt = 0; attempt < 400 && !site; attempt++) {
+      const cx = 40 + Math.floor(rnd() * (MAP - 80));
+      const cy = 40 + Math.floor(rnd() * (MAP - 80));
+      let land = 0, water = 0, minH = 99, maxH = 0;
+      for (let y = cy - 10; y <= cy + 10; y++) {
+        for (let x = cx - 10; x <= cx + 10; x++) {
+          if (tType(x, y) === T_WATER) water++;
+          else { land++; minH = Math.min(minH, tH(x, y)); maxH = Math.max(maxH, tH(x, y)); }
+        }
+      }
+      // A good field: mostly land, a little water nearby, and some relief.
+      if (land < 330 || maxH - minH < 3) continue;
+      if (attempt < 300 && water < 6) continue;
+      const a = nearestFree(cx - 6, cy, new Set());
+      const b = nearestFree(cx + 6, cy, new Set());
+      if (!a || !b || !connected(a, b, 3, 60)) continue;
+      site = { cx, cy, a, b };
+    }
+    if (!site) site = { cx: MAP / 2, cy: MAP / 2, a: nearestFree(MAP / 2 - 6, MAP / 2, new Set()), b: nearestFree(MAP / 2 + 6, MAP / 2, new Set()) };
+    state.site = site;
+
+    const taken = new Set();
+    const place = (roster, team, origin, spreadX) => roster.map((def, i) => {
+      const ox = origin.x + (i % 2) * spreadX, oy = origin.y - 2 + i;
+      const p = nearestFree(ox, oy, taken) || nearestFree(origin.x, origin.y, taken);
+      taken.add(idx(p.x, p.y));
+      return makeUnit(def, team, rnd, p.x, p.y);
+    });
+    state.units = [...place(ALLY_ROSTER, 'ally', site.a, -1), ...place(ENEMY_ROSTER, 'enemy', site.b, 1)];
+    state.pending = [];
+    state.tick = 0;
+  }
+
+  /* =====================================================================
+     3. Procedural art
+     ===================================================================== */
+
+  function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = clamp(Math.round(((n >> 16) & 255) * f), 0, 255);
+    const g = clamp(Math.round(((n >> 8) & 255) * f), 0, 255);
+    const b = clamp(Math.round((n & 255) * f), 0, 255);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const PALETTE = {
+    [T_GRASS]: { top: ['#5f9a3a', '#689f3f', '#5a9036', '#6aa646'], side: '#7a5a35', lip: '#4f8530' },
+    [T_BAD]:   { top: ['#a8744a', '#b07d50', '#9d6c44', '#ae7a4c'], side: '#8a5634', lip: '#9a6a42' },
+    [T_WATER]: { top: ['#2f6fb0', '#2c6aa8', '#3274b6', '#2d6cac'], side: '#1d4a7a', lip: '#2f6fb0' },
+  };
+
+  function paintBlock(type, v, frame) {
+    const cv = makeCanvas(TILE_W, TILE_H + SIDE);
+    const ctx = cv.getContext('2d');
+    const pal = PALETTE[type];
+    const rnd = mulberry32(type * 97 + v * 13 + frame * 5 + 3);
+
+    // Side faces first; the top diamond overlaps their upper edge.
+    const faces = [
+      [[0, HH], [HW, TILE_H], [HW, TILE_H + SIDE], [0, HH + SIDE]],
+      [[HW, TILE_H], [TILE_W, HH], [TILE_W, HH + SIDE], [HW, TILE_H + SIDE]],
+    ];
+    faces.forEach((poly, i) => {
+      ctx.save();
+      ctx.beginPath();
+      poly.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = shade(pal.side, i === 0 ? 0.72 : 0.9);
+      ctx.fillRect(0, 0, TILE_W, TILE_H + SIDE);
+      // Strata line per height level.
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = 1;
+      for (let s = 1; s <= MAXH + 2; s++) {
+        ctx.beginPath();
+        const yo = s * HPX;
+        if (i === 0) { ctx.moveTo(0, HH + yo); ctx.lineTo(HW, TILE_H + yo); }
+        else { ctx.moveTo(HW, TILE_H + yo); ctx.lineTo(TILE_W, HH + yo); }
+        ctx.stroke();
+      }
+      for (let n = 0; n < 30; n++) {
+        ctx.fillStyle = rnd() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.06)';
+        ctx.fillRect(rnd() * TILE_W, TILE_H * 0.5 + rnd() * SIDE, 2, 1);
+      }
+      // Grass lip hanging over the top of the cliff.
+      if (type === T_GRASS) {
+        ctx.fillStyle = shade(pal.lip, i === 0 ? 0.8 : 0.95);
+        ctx.beginPath();
+        if (i === 0) { ctx.moveTo(0, HH); ctx.lineTo(HW, TILE_H); ctx.lineTo(HW, TILE_H + 4); ctx.lineTo(0, HH + 5); }
+        else { ctx.moveTo(HW, TILE_H); ctx.lineTo(TILE_W, HH); ctx.lineTo(TILE_W, HH + 5); ctx.lineTo(HW, TILE_H + 4); }
+        ctx.fill();
+      }
+      ctx.restore();
+    });
+    // Edge where the two faces meet.
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.moveTo(HW, TILE_H); ctx.lineTo(HW, TILE_H + SIDE); ctx.stroke();
+
+    // Top face.
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(HW, -0.5); ctx.lineTo(TILE_W + 0.5, HH); ctx.lineTo(HW, TILE_H + 0.5); ctx.lineTo(-0.5, HH);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = pal.top[v];
+    ctx.fillRect(0, 0, TILE_W, TILE_H);
+    if (type === T_GRASS) {
+      for (let n = 0; n < 46; n++) {
+        ctx.fillStyle = rnd() < 0.5 ? 'rgba(20,60,10,0.35)' : 'rgba(190,230,120,0.25)';
+        const x = rnd() * TILE_W, y = rnd() * TILE_H;
+        ctx.fillRect(x, y, 1, 2);
+      }
+      if (v === 3) {                    // a few flowers
+        for (let n = 0; n < 3; n++) { ctx.fillStyle = rnd() < 0.5 ? '#f4e36a' : '#f6f6f6'; ctx.fillRect(10 + rnd() * 44, 8 + rnd() * 16, 2, 2); }
+      }
+    } else if (type === T_BAD) {
+      ctx.strokeStyle = 'rgba(60,30,10,0.45)';
+      for (let n = 0; n < 3; n++) {
+        ctx.beginPath();
+        let x = 10 + rnd() * 44, y = 6 + rnd() * 20;
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 3; s++) { x += rnd() * 10 - 5; y += rnd() * 6 - 3; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+      for (let n = 0; n < 24; n++) {
+        ctx.fillStyle = rnd() < 0.5 ? 'rgba(80,40,20,0.35)' : 'rgba(240,200,150,0.25)';
+        ctx.fillRect(rnd() * TILE_W, rnd() * TILE_H, 2, 2);
+      }
+      if (v === 2) { ctx.fillStyle = '#7c6e62'; ctx.beginPath(); ctx.ellipse(36, 15, 5, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+    } else {
+      ctx.strokeStyle = 'rgba(200,230,255,0.45)';
+      ctx.lineWidth = 1;
+      for (let n = 0; n < 4; n++) {
+        const y = 6 + n * 6 + (frame ? 3 : 0), x = 12 + ((n * 17 + v * 7 + frame * 9) % 30);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 4, y - 2, x + 8, y); ctx.stroke();
+      }
+    }
+    // Faint panel edge, like the battle grid of the era.
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(HW, 0.5); ctx.lineTo(TILE_W - 0.5, HH); ctx.lineTo(HW, TILE_H - 0.5); ctx.lineTo(0.5, HH); ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+    return cv;
+  }
+
+  function paintOverlay(fill, alpha, edge) {
+    const cv = makeCanvas(TILE_W, TILE_H);
+    const ctx = cv.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(HW, 2); ctx.lineTo(TILE_W - 3, HH); ctx.lineTo(HW, TILE_H - 2); ctx.lineTo(3, HH); ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.globalAlpha = alpha; ctx.fill(); ctx.globalAlpha = 1; }
+    ctx.strokeStyle = edge; ctx.lineWidth = 2; ctx.stroke();
+    return cv;
+  }
+
+  // Chibi unit, drawn facing down-left (front) or up-left (back). The scene
+  // flips it horizontally for the two right-facing screen directions.
+  function paintUnit(jobKey, team, back) {
+    const W = 40, H = 56;
+    const cv = makeCanvas(W, H);
+    const ctx = cv.getContext('2d');
+    const j = JOBS[jobKey];
+    const teamC = team === 'ally' ? '#2f6fe0' : '#d0342c';
+    const teamD = team === 'ally' ? '#1b3f8a' : '#7e1b16';
+    const skin = '#f1c79a';
+    const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(20, 52, 11, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+
+    const robe = jobKey === 'chaplain' || jobKey === 'arcanist';
+    // Cape behind (visible from the back).
+    if (back && !robe) { px(11, 24, 18, 20, teamC); px(11, 42, 18, 2, teamD); }
+    // Legs and boots.
+    if (!robe) {
+      px(14, 40, 5, 9, '#3a2c22'); px(21, 40, 5, 9, '#3a2c22');
+      px(13, 47, 6, 3, '#20160f'); px(21, 47, 6, 3, '#20160f');
+    }
+    // Torso.
+    const torsoH = robe ? 25 : 17;
+    px(12, 25, 16, torsoH, j.body);
+    px(12, 25, 2, torsoH, shade(j.body, 0.75));
+    px(26, 25, 2, torsoH, shade(j.body, 0.75));
+    if (robe) { px(11, 46, 18, 4, shade(j.body, 0.7)); px(12, 46, 16, 1, teamC); }
+    // Team sash / belt.
+    px(12, 35, 16, 3, teamC);
+    px(12, 25, 16, 2, teamD);
+    if (back && !robe) { px(11, 26, 18, 16, teamC); px(11, 26, 18, 2, teamD); }
+    // Arms.
+    const armC = jobKey === 'brawler' ? skin : shade(j.body, 0.85);
+    px(8, 26, 4, 12, armC); px(28, 26, 4, 12, armC);
+    if (jobKey === 'brawler') { px(7, 37, 6, 4, '#a0281e'); px(27, 37, 6, 4, '#a0281e'); }
+    else { px(8, 37, 4, 3, skin); px(28, 37, 4, 3, skin); }
+
+    // Head.
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.arc(19, 16, 8.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = j.hair;
+    if (back) {
+      ctx.beginPath(); ctx.arc(19, 15, 9, 0, Math.PI * 2); ctx.fill();
+      px(11, 15, 16, 7, j.hair);
+    } else {
+      ctx.beginPath(); ctx.arc(20, 13, 8.8, Math.PI * 0.98, Math.PI * 2.02); ctx.fill();
+      px(24, 10, 4, 10, j.hair);
+      // Eyes looking down-left.
+      px(14, 17, 2, 3, '#1b1410'); px(19, 17, 2, 3, '#1b1410');
+      px(15, 23, 3, 1, '#b27a5a');
+    }
+    // Job headgear and gear.
+    if (jobKey === 'sentinel') {
+      ctx.fillStyle = '#c6ccd8';
+      ctx.beginPath(); ctx.arc(19, 13, 9.4, Math.PI, Math.PI * 2); ctx.fill();
+      px(10, 12, 19, 3, '#9aa3b4');
+      px(18, 2, 2, 5, teamC);
+      if (!back) {
+        // Shield on the near arm, sword in the far hand.
+        px(4, 27, 9, 13, '#c6ccd8'); px(5, 28, 7, 11, teamC); px(7, 31, 3, 5, '#ffe08a');
+        px(30, 20, 2, 18, '#e8ecf4'); px(28, 36, 6, 2, '#8a6a2a');
+      } else {
+        px(28, 26, 9, 13, '#c6ccd8'); px(29, 27, 7, 11, teamD);
+      }
+    } else if (jobKey === 'ranger') {
+      ctx.fillStyle = '#3c6e2c';
+      ctx.beginPath(); ctx.arc(19, 13, 9.4, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      ctx.strokeStyle = '#8a5a2a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(back ? 34 : 6, 32, 11, -Math.PI / 2.4, Math.PI / 2.4, back); ctx.stroke();
+      ctx.strokeStyle = '#eee'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(back ? 37 : 3, 22); ctx.lineTo(back ? 37 : 3, 42); ctx.stroke();
+      if (back) { px(20, 22, 4, 14, '#6a4a2a'); px(20, 20, 1, 3, '#eee'); px(23, 20, 1, 3, '#eee'); }
+    } else if (jobKey === 'chaplain') {
+      ctx.fillStyle = '#f4efe2';
+      ctx.beginPath(); ctx.arc(19, 14, 10, Math.PI * 0.9, Math.PI * 2.1); ctx.fill();
+      px(9, 14, 3, 10, '#f4efe2'); px(26, 14, 3, 10, '#f4efe2');
+      px(9, 18, 20, 2, teamC);
+      px(back ? 33 : 5, 14, 2, 36, '#8a6a3a');
+      ctx.fillStyle = '#ffe08a'; ctx.beginPath(); ctx.arc(back ? 34 : 6, 13, 3.5, 0, Math.PI * 2); ctx.fill();
+    } else if (jobKey === 'arcanist') {
+      ctx.fillStyle = shade(j.body, 0.7);
+      ctx.beginPath(); ctx.arc(19, 14, 10, Math.PI * 0.85, Math.PI * 2.15); ctx.fill();
+      px(9, 14, 3, 11, shade(j.body, 0.7)); px(26, 14, 3, 11, shade(j.body, 0.7));
+      px(11, 9, 16, 2, '#ffd36a');
+      px(back ? 33 : 5, 20, 2, 26, '#5a3a2a');
+      ctx.fillStyle = team === 'ally' ? '#7fd8ff' : '#ff8a5a';
+      ctx.beginPath(); ctx.arc(back ? 34 : 6, 19, 3.5, 0, Math.PI * 2); ctx.fill();
+    } else if (jobKey === 'brawler') {
+      px(10, 9, 19, 3, team === 'ally' ? '#3a7af0' : '#e04a3a');
+      if (back) { px(26, 10, 3, 8, team === 'ally' ? '#3a7af0' : '#e04a3a'); }
+    }
+    return cv;
+  }
+
+  function paintCrystal(team) {
+    const cv = makeCanvas(40, 56);
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(20, 52, 9, 3, 0, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createLinearGradient(10, 10, 30, 50);
+    g.addColorStop(0, '#e8fff8'); g.addColorStop(0.5, team === 'ally' ? '#5fe0c8' : '#e07ab8'); g.addColorStop(1, '#1b5a6a');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(20, 12); ctx.lineTo(30, 32); ctx.lineTo(20, 52); ctx.lineTo(10, 32); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(20, 12); ctx.lineTo(20, 52); ctx.stroke();
+    return cv;
+  }
+
+  function paintMarker() {
+    const cv = makeCanvas(18, 22);
+    const ctx = cv.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 18, 22);
+    g.addColorStop(0, '#fff6c8'); g.addColorStop(1, '#e0a020');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(9, 22); ctx.lineTo(18, 6); ctx.lineTo(9, 0); ctx.lineTo(0, 6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#5a3a00'; ctx.stroke();
+    return cv;
+  }
+
+  const unitCanvases = {};
+  function unitCanvas(jobKey, team, back) {
+    const k = `${jobKey}_${team}_${back ? 1 : 0}`;
+    if (!unitCanvases[k]) unitCanvases[k] = paintUnit(jobKey, team, back);
+    return unitCanvases[k];
+  }
+
+  /* =====================================================================
+     4. Rules
+     ===================================================================== */
+
+  // Dijkstra over land: one move point per step, |dh| <= jump, enemies block,
+  // allies can be passed but not stopped on.
+  function reachable(u) {
+    const start = { tx: u.tx, ty: u.ty, cost: 0, prev: null };
+    const out = new Map([[idx(u.tx, u.ty), start]]);
+    let frontier = [start];
+    while (frontier.length) {
+      const next = [];
+      for (const n of frontier) {
+        if (n.cost >= u.move) continue;
+        for (const [dx, dy] of DIRS) {
+          const nx = n.tx + dx, ny = n.ty + dy;
+          if (!walkable(nx, ny)) continue;
+          if (Math.abs(tH(nx, ny) - tH(n.tx, n.ty)) > u.jump) continue;
+          const k = idx(nx, ny);
+          if (out.has(k)) continue;
+          const occ = unitAt(nx, ny);
+          if (occ && occ !== u && occ.team !== u.team && !occ.ko) continue;
+          const node = { tx: nx, ty: ny, cost: n.cost + 1, prev: n, passOnly: !!(occ && occ !== u) };
+          out.set(k, node);
+          next.push(node);
+        }
+      }
+      frontier = next;
+    }
+    return out;
+  }
+
+  function pathTo(reach, tx, ty) {
+    const path = [];
+    let n = reach.get(idx(tx, ty));
+    while (n) { path.unshift({ tx: n.tx, ty: n.ty }); n = n.prev; }
+    return path;
+  }
+
+  function skillRange(u, skill) {
+    return skill.range === 'weapon' ? WEAPON_RANGE[JOBS[u.job].weapon] : skill.range;
+  }
+
+  // Tiles a skill may be aimed at from (fx, fy).
+  function targetTiles(u, skill, fx = u.tx, fy = u.ty) {
+    const r = skillRange(u, skill);
+    const weapon = JOBS[u.job].weapon;
+    const isBow = skill.range === 'weapon' && weapon === 'bow';
+    const h0 = tH(fx, fy);
+    const reachMax = r.max + (isBow ? 2 : 0);
+    const out = [];
+    for (let dy = -reachMax; dy <= reachMax; dy++) {
+      for (let dx = -reachMax; dx <= reachMax; dx++) {
+        const d = Math.abs(dx) + Math.abs(dy);
+        const x = fx + dx, y = fy + dy;
+        if (!inMap(x, y) || d < r.min || d > reachMax) continue;
+        const dh = h0 - tH(x, y);
+        let max = r.max;
+        if (isBow) max += Math.max(0, Math.floor(dh / 2));
+        if (d > max) continue;
+        if (r.max === 1 && skill.range !== undefined && Math.abs(dh) > MELEE_VERT && skill.kind === 'phys') continue;
+        out.push({ tx: x, ty: y });
+      }
+    }
+    return out;
+  }
+
+  function areaTiles(skill, cx, cy) {
+    const out = [];
+    const h0 = tH(cx, cy);
+    for (let dy = -skill.aoe; dy <= skill.aoe; dy++) {
+      for (let dx = -skill.aoe; dx <= skill.aoe; dx++) {
+        if (Math.abs(dx) + Math.abs(dy) > skill.aoe) continue;
+        const x = cx + dx, y = cy + dy;
+        if (!inMap(x, y)) continue;
+        if (Math.abs(tH(x, y) - h0) > AOE_VERT) continue;
+        out.push({ tx: x, ty: y });
+      }
+    }
+    return out;
+  }
+
+  // Front / side / back from the defender's point of view.
+  function attackAngle(att, def, ax = att.tx, ay = att.ty) {
+    const dx = ax - def.tx, dy = ay - def.ty;
+    const [fx, fy] = DIRS[def.face];
+    const dot = dx * fx + dy * fy;
+    const cross = Math.abs(dx * fy - dy * fx);
+    if (dot > 0 && dot >= cross) return 'front';
+    if (dot < 0 && -dot >= cross) return 'back';
+    return 'side';
+  }
+
+  function physBase(u) {
+    const j = JOBS[u.job];
+    switch (j.weapon) {
+      case 'sword': return u.pa * j.wp;
+      case 'bow':   return Math.floor((u.pa + u.spd) / 2) * j.wp;
+      case 'fist':  return Math.floor((u.pa * u.pa * u.brave) / 100 / 1.4);
+      default:      return u.pa * j.wp;
+    }
+  }
+
+  // Everything the forecast panel and the resolver need for one target.
+  function predict(att, skill, def, ax = att.tx, ay = att.ty) {
+    if (skill.kind === 'raise') {
+      if (!def.ko || def.team !== att.team) return null;
+      return { hit: 85, amount: Math.floor(def.maxHp * 0.25), label: 'Revive' };
+    }
+    if (!standing(def)) return null;
+    if (skill.kind === 'heal') {
+      const amt = skill.paHeal ? att.pa * skill.paHeal : Math.floor((att.ma * skill.pow * att.faith * def.faith) / 10000);
+      return { hit: 100, amount: -amt, label: 'Heal' };
+    }
+    if (skill.kind === 'mag') {
+      const dmg = Math.floor((att.ma * skill.pow * att.faith * def.faith) / 10000);
+      return { hit: 100, amount: Math.max(1, dmg), label: 'Damage' };
+    }
+    const angle = attackAngle(att, def, ax, ay);
+    const ev = skill.noEvade ? 0 : angle === 'front' ? JOBS[def.job].ev : angle === 'side' ? Math.floor(JOBS[def.job].ev / 2) : 0;
+    let dmg = Math.floor(physBase(att) * (skill.mult || 1));
+    const dh = tH(ax, ay) - tH(def.tx, def.ty);
+    if (dh >= 2) dmg = Math.floor(dmg * 1.1);
+    return { hit: 100 - ev, amount: Math.max(1, dmg), label: 'Damage', angle };
+  }
+
+  function ctCost(u) {
+    return u.moved && u.acted ? 100 : u.moved || u.acted ? 80 : 60;
+  }
+
+  // Look-ahead for the turn-order panel: simulate the clock without side effects.
+  function forecastOrder(count) {
+    const sim = state.units.filter((u) => !u.crystal).map((u) => ({ u, ct: u.ct, ko: u.ko, charging: !!u.charging }));
+    const pend = state.pending.map((p) => ({ p, ctr: p.ctr }));
+    const out = [];
+    if (state.active) out.push({ type: 'unit', u: state.active, now: true });
+    const activeSim = sim.find((s) => s.u === state.active);
+    if (activeSim) activeSim.ct = Math.min(activeSim.ct - ctCost(state.active), 60);
+    for (let t = 0; t < 400 && out.length < count; t++) {
+      for (const p of pend) if (p.ctr <= 0 && !p.done) { p.done = true; out.push({ type: 'spell', p: p.p }); }
+      let any = true;
+      while (any && out.length < count) {
+        any = false;
+        const ready = sim.filter((s) => !s.ko && !s.charging && s.ct >= 100).sort((a, b) => b.ct - a.ct);
+        if (ready.length) {
+          const s = ready[0];
+          out.push({ type: 'unit', u: s.u });
+          s.ct = Math.min(s.ct - 80, 60);
+          any = true;
+        }
+      }
+      for (const s of sim) if (!s.ko) s.ct += s.u.spd;
+      for (const p of pend) { p.ctr--; if (p.ctr <= 0 && !p.done) { const c = sim.find((s) => s.u === p.p.caster); if (c) c.charging = false; } }
+    }
+    return out.slice(0, count);
+  }
+
+  /* =====================================================================
+     5. Phaser scene
+     ===================================================================== */
+
+  let scene = null;
+  let rot = 0;
+
+  function toView(tx, ty) {
+    switch (rot) {
+      case 0: return [tx, ty];
+      case 1: return [MAP - 1 - ty, tx];
+      case 2: return [MAP - 1 - tx, MAP - 1 - ty];
+      default: return [ty, MAP - 1 - tx];
+    }
+  }
+  function fromView(vx, vy) {
+    switch (rot) {
+      case 0: return [vx, vy];
+      case 1: return [vy, MAP - 1 - vx];
+      case 2: return [MAP - 1 - vx, MAP - 1 - vy];
+      default: return [MAP - 1 - vy, vx];
+    }
+  }
+  // World position of the centre of a tile's top face.
+  function topCenter(tx, ty) {
+    const [vx, vy] = toView(tx, ty);
+    return { x: (vx - vy) * HW, y: (vx + vy) * HH + HH - tH(tx, ty) * HPX, depth: vx + vy };
+  }
+  // Screen quadrant a tile direction points to under the current rotation.
+  function screenDir(dir) {
+    const [dx, dy] = DIRS[dir];
+    const [ax, ay] = toView(256, 256);
+    const [bx, by] = toView(256 + dx, 256 + dy);
+    const vx = bx - ax, vy = by - ay;
+    if (vx === 1) return 'se';
+    if (vy === 1) return 'sw';
+    if (vx === -1) return 'nw';
+    return 'ne';
+  }
+  function dirFromScreen(q) {
+    for (let d = 0; d < 4; d++) if (screenDir(d) === q) return d;
+    return 0;
+  }
+  function dirToward(from, to) {
+    const dx = to.tx - from.tx, dy = to.ty - from.ty;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 0 : 2;
+    return dy >= 0 ? 1 : 3;
+  }
+
+  const sleep = (ms) => new Promise((res) => {
+    const d = state.fast ? ms * 0.25 : ms;
+    if (scene) scene.time.delayedCall(d, res); else setTimeout(res, d);
+  });
+  const tween = (cfg) => new Promise((res) => {
+    scene.tweens.add({ ...cfg, duration: state.fast ? cfg.duration * 0.25 : cfg.duration, onComplete: res });
+  });
+
+  function defineScene() {
+    return class BattleScene extends Phaser.Scene {
+      constructor() { super('battle'); }
+
+      create() {
+        this.makeTextures();
+        this.pool = [];
+        this.hlPool = [];
+        this.hl = [];            // [{tx, ty, key}]
+        this.waterFrame = 0;
+        this.lastView = '';
+        this.dirty = true;
+
+        for (const u of state.units) this.spawnUnit(u);
+        this.marker = this.add.image(0, 0, 'marker').setOrigin(0.5, 1).setDepth(1e6);
+        this.cursor = this.add.image(0, 0, 'hl_cursor').setOrigin(0.5, 0).setVisible(false);
+
+        const cam = this.cameras.main;
+        cam.setBackgroundColor('#070a18');
+        cam.setZoom(1.25);
+        const c = topCenter(state.site.cx, state.site.cy);
+        cam.centerOn(c.x, c.y);
+
+        this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT');
+        this.input.keyboard.on('keydown', (ev) => onKey(ev));
+        this.input.mouse?.disableContextMenu();
+
+        this.drag = null;
+        this.input.on('pointerdown', (p) => {
+          if (p.rightButtonDown()) { cancel(); return; }
+          this.drag = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY, moved: false };
+        });
+        this.input.on('pointermove', (p) => {
+          const t = this.pickTile(p.x, p.y);
+          onHover(t);
+          if (this.drag && p.isDown) {
+            const dx = p.x - this.drag.x, dy = p.y - this.drag.y;
+            if (Math.abs(dx) + Math.abs(dy) > 6) this.drag.moved = true;
+            if (this.drag.moved) {
+              cam.scrollX = this.drag.sx - dx / cam.zoom;
+              cam.scrollY = this.drag.sy - dy / cam.zoom;
+            }
+          }
+        });
+        this.input.on('pointerup', (p) => {
+          const d = this.drag;
+          this.drag = null;
+          if (d && !d.moved && p.button === 0) {
+            const t = this.pickTile(p.x, p.y);
+            if (t) onClickTile(t);
+          }
+        });
+        this.input.on('wheel', (p, over, dx, dy) => {
+          const before = this.screenToWorld(p.x, p.y);
+          cam.zoom = clamp(cam.zoom * (dy > 0 ? 0.88 : 1.14), 0.6, 2.6);
+          cam.scrollX = before.x - (p.x - cam.width / 2) / cam.zoom - cam.width / 2;
+          cam.scrollY = before.y - (p.y - cam.height / 2) / cam.zoom - cam.height / 2;
+        });
+
+        this.time.addEvent({ delay: 650, loop: true, callback: () => { this.waterFrame ^= 1; this.dirty = true; } });
+        this.time.addEvent({ delay: 200, loop: true, callback: () => drawMinimap() });
+      }
+
+      makeTextures() {
+        const add = (k, cv) => { if (!this.textures.exists(k)) this.textures.addCanvas(k, cv); };
+        for (const type of [T_GRASS, T_BAD, T_WATER]) {
+          for (let v = 0; v < 4; v++) {
+            for (let f = 0; f < (type === T_WATER ? 2 : 1); f++) add(`b${type}_${v}_${f}`, paintBlock(type, v, f));
+          }
+        }
+        add('hl_move', paintOverlay('#3d8bff', 0.45, 'rgba(160,210,255,0.9)'));
+        add('hl_atk', paintOverlay('#ff4040', 0.38, 'rgba(255,170,170,0.9)'));
+        add('hl_aoe', paintOverlay('#ffd23d', 0.55, 'rgba(255,245,180,1)'));
+        add('hl_cursor', paintOverlay(null, 0, 'rgba(255,255,255,0.95)'));
+        add('marker', paintMarker());
+        for (const team of ['ally', 'enemy']) {
+          add(`crystal_${team}`, paintCrystal(team));
+          for (const job of Object.keys(JOBS)) for (const back of [0, 1]) add(`u_${job}_${team}_${back}`, unitCanvas(job, team, back));
+        }
+      }
+
+      spawnUnit(u) {
+        u.sprite = this.add.image(0, 0, `u_${u.job}_${u.team}_0`).setOrigin(0.5, 52 / 56);
+        u.bar = this.add.graphics();
+        u.koText = this.add.text(0, 0, '', {
+          fontFamily: 'Georgia, serif', fontSize: '14px', color: '#ff9c9c', stroke: '#000', strokeThickness: 3,
+        }).setOrigin(0.5, 1);
+        u.anim = null;
+      }
+
+      /* ---------- camera / picking ---------- */
+
+      view() {
+        const cam = this.cameras.main;
+        const w = cam.width / cam.zoom, h = cam.height / cam.zoom;
+        return { x: cam.scrollX + cam.width / 2 - w / 2, y: cam.scrollY + cam.height / 2 - h / 2, w, h };
+      }
+      screenToWorld(px, py) {
+        const cam = this.cameras.main;
+        return {
+          x: cam.scrollX + cam.width / 2 + (px - cam.width / 2) / cam.zoom,
+          y: cam.scrollY + cam.height / 2 + (py - cam.height / 2) / cam.zoom,
+        };
+      }
+      worldToScreen(wx, wy) {
+        const cam = this.cameras.main;
+        return {
+          x: (wx - (cam.scrollX + cam.width / 2)) * cam.zoom + cam.width / 2,
+          y: (wy - (cam.scrollY + cam.height / 2)) * cam.zoom + cam.height / 2,
+        };
+      }
+      static worldToView(wx, wy) {
+        const fx = wx / HW, fy = wy / HH;
+        return [Math.floor((fy + fx) / 2), Math.floor((fy - fx) / 2)];
+      }
+      // The frontmost tile whose raised top face contains the point.
+      pickTile(px, py) {
+        const w = this.screenToWorld(px, py);
+        let best = null;
+        for (let lvl = 0; lvl <= MAXH; lvl++) {
+          const [vx, vy] = BattleScene.worldToView(w.x, w.y + lvl * HPX);
+          if (vx < 0 || vy < 0 || vx >= MAP || vy >= MAP) continue;
+          const [tx, ty] = fromView(vx, vy);
+          if (tH(tx, ty) !== lvl) continue;
+          if (!best || vx + vy > best.d) best = { tx, ty, d: vx + vy };
+        }
+        return best ? { tx: best.tx, ty: best.ty } : null;
+      }
+      tileScreen(tx, ty) {
+        const c = topCenter(tx, ty);
+        return this.worldToScreen(c.x, c.y);
+      }
+      clampCamera() {
+        const cam = this.cameras.main;
+        const midX = clamp(cam.scrollX + cam.width / 2, -MAP * HW, MAP * HW);
+        const midY = clamp(cam.scrollY + cam.height / 2, -MAXH * HPX, MAP * TILE_H);
+        cam.scrollX = midX - cam.width / 2;
+        cam.scrollY = midY - cam.height / 2;
+      }
+      lookAt(tx, ty, duration = 350) {
+        const cam = this.cameras.main;
+        const c = topCenter(tx, ty);
+        const sx = c.x - cam.width / 2, sy = c.y - cam.height / 2;
+        if (Math.abs(sx - cam.scrollX) + Math.abs(sy - cam.scrollY) < 4) return Promise.resolve();
+        return tween({ targets: cam, scrollX: sx, scrollY: sy, duration, ease: 'Sine.easeInOut' });
+      }
+
+      /* ---------- culling renderer ---------- */
+
+      redrawTiles() {
+        const v = this.view();
+        // Raised tiles from below the bottom edge can poke into view.
+        const pad = Math.ceil((MAXH * HPX) / HH) + 2;
+        const corners = [[v.x, v.y], [v.x + v.w, v.y], [v.x, v.y + v.h], [v.x + v.w, v.y + v.h]]
+          .map(([x, y]) => BattleScene.worldToView(x, y));
+        const minVx = clamp(Math.min(...corners.map((c) => c[0])) - 1, 0, MAP - 1);
+        const maxVx = clamp(Math.max(...corners.map((c) => c[0])) + pad, 0, MAP - 1);
+        const minVy = clamp(Math.min(...corners.map((c) => c[1])) - 1, 0, MAP - 1);
+        const maxVy = clamp(Math.max(...corners.map((c) => c[1])) + pad, 0, MAP - 1);
+        const { type, height, variant } = state.map;
+        let n = 0;
+        for (let vy = minVy; vy <= maxVy; vy++) {
+          for (let vx = minVx; vx <= maxVx; vx++) {
+            const sx = (vx - vy) * HW;
+            if (sx + HW < v.x || sx - HW > v.x + v.w) continue;
+            const [tx, ty] = fromView(vx, vy);
+            const k = idx(tx, ty);
+            const sy = (vx + vy) * HH - height[k] * HPX;
+            if (sy > v.y + v.h || sy + TILE_H + SIDE < v.y) continue;
+            const t = type[k];
+            const f = t === T_WATER ? (this.waterFrame + tx + ty) & 1 : 0;
+            let img = this.pool[n];
+            if (!img) { img = this.add.image(0, 0, 'b0_0_0').setOrigin(0.5, 0); this.pool.push(img); }
+            img.setTexture(`b${t}_${variant[k]}_${f}`).setPosition(sx, sy).setDepth(vx + vy).setVisible(true);
+            n++;
+          }
+        }
+        for (let i = n; i < this.pool.length; i++) this.pool[i].setVisible(false);
+        body.dataset.visibleTiles = String(n);
+      }
+
+      setHighlights(list) {
+        this.hl = list;
+        this.drawHighlights();
+      }
+      drawHighlights() {
+        let n = 0;
+        for (const h of this.hl) {
+          const c = topCenter(h.tx, h.ty);
+          let img = this.hlPool[n];
+          if (!img) { img = this.add.image(0, 0, h.key).setOrigin(0.5, 0); this.hlPool.push(img); }
+          img.setTexture(h.key).setPosition(c.x, c.y - HH).setDepth(c.depth + 0.2 + (h.key === 'hl_aoe' ? 0.01 : 0)).setVisible(true);
+          n++;
+        }
+        for (let i = n; i < this.hlPool.length; i++) this.hlPool[i].setVisible(false);
+      }
+      setCursor(t) {
+        if (!t) { this.cursor.setVisible(false); return; }
+        const c = topCenter(t.tx, t.ty);
+        this.cursor.setPosition(c.x, c.y - HH).setDepth(c.depth + 0.3).setVisible(true);
+      }
+
+      update(time, delta) {
+        const cam = this.cameras.main;
+        const speed = (0.8 * delta) / cam.zoom;
+        const k = this.keys;
+        const facing = state.mode === 'facing';
+        if (!document.querySelector('.modal.show')) {
+          if (k.A.isDown || (!facing && k.LEFT.isDown)) cam.scrollX -= speed;
+          if (k.D.isDown || (!facing && k.RIGHT.isDown)) cam.scrollX += speed;
+          if (k.W.isDown || (!facing && k.UP.isDown)) cam.scrollY -= speed;
+          if (k.S.isDown || (!facing && k.DOWN.isDown)) cam.scrollY += speed;
+        }
+        this.clampCamera();
+        const sig = `${cam.scrollX | 0},${cam.scrollY | 0},${cam.zoom.toFixed(3)},${cam.width},${cam.height},${rot}`;
+        if (sig !== this.lastView || this.dirty) {
+          this.lastView = sig;
+          this.dirty = false;
+          this.redrawTiles();
+        }
+        for (const u of state.units) this.syncUnit(u, time);
+        const a = state.active;
+        if (a && a.sprite && !state.over) {
+          this.marker.setVisible(true).setPosition(a.sprite.x, a.sprite.y - 60 + Math.sin(time / 180) * 4);
+        } else this.marker.setVisible(false);
+      }
+
+      syncUnit(u, time) {
+        if (!u.sprite) return;
+        const c = topCenter(u.tx, u.ty);
+        const pos = u.anim || c;
+        const q = screenDir(u.face);
+        const back = q === 'ne' || q === 'nw';
+        if (u.crystal) {
+          u.sprite.setTexture(`crystal_${u.team}`).setFlipX(false).setAngle(0).setAlpha(0.9);
+        } else {
+          u.sprite.setTexture(`u_${u.job}_${u.team}_${back ? 1 : 0}`).setFlipX(q === 'se' || q === 'ne');
+          u.sprite.setAngle(u.ko ? (q === 'se' || q === 'ne' ? 80 : -80) : 0).setAlpha(u.ko ? 0.75 : 1);
+        }
+        const bob = u.charging ? Math.sin(time / 90) * 1.5 : 0;
+        u.sprite.setPosition(pos.x + (u.lunge?.x || 0), pos.y + (u.ko ? -6 : 0) + bob + (u.lunge?.y || 0));
+        u.sprite.setDepth((pos.depth ?? c.depth) + 0.5);
+
+        const x = pos.x, y = pos.y - 58;
+        u.bar.clear();
+        u.koText.setVisible(false);
+        if (u.crystal) return;
+        if (u.ko) {
+          u.koText.setText(String(u.koCount)).setPosition(x, y + 22).setDepth(1e6 - 1).setVisible(true);
+          return;
+        }
+        const r = u.hp / u.maxHp;
+        u.bar.setDepth(1e6 - 2);
+        u.bar.fillStyle(0x000000, 0.75).fillRect(x - 14, y, 28, 5);
+        u.bar.fillStyle(r > 0.5 ? 0x5fe36a : r > 0.25 ? 0xffd23d : 0xff4f3d, 1).fillRect(x - 13, y + 1, 26 * r, 3);
+        u.bar.fillStyle(u.team === 'ally' ? 0x6fb6ff : 0xff7a6a, 1).fillRect(x - 14, y - 2, 28, 1);
+        if (u.charging) {
+          u.bar.fillStyle(0xffd6a0, 0.9).fillCircle(x + 18, y + 2, 3);
+        }
+      }
+
+      /* ---------- effects ---------- */
+
+      popup(tx, ty, text, color) {
+        const c = topCenter(tx, ty);
+        const t = this.add.text(c.x, c.y - 44, text, {
+          fontFamily: 'Georgia, serif', fontSize: '20px', fontStyle: 'bold', color, stroke: '#000', strokeThickness: 4,
+        }).setOrigin(0.5, 1).setDepth(1e6 + 1);
+        this.tweens.add({ targets: t, y: c.y - 74, alpha: { from: 1, to: 0 }, duration: state.fast ? 400 : 1100, ease: 'Cubic.easeOut', onComplete: () => t.destroy() });
+      }
+
+      async burst(tiles, color) {
+        const gs = tiles.map((t) => {
+          const c = topCenter(t.tx, t.ty);
+          const g = this.add.graphics().setDepth(c.depth + 0.6).setPosition(c.x, c.y);
+          g.fillStyle(color, 0.55).fillEllipse(0, 0, 54, 26);
+          g.lineStyle(2, 0xffffff, 0.8).strokeEllipse(0, 0, 54, 26);
+          g.fillStyle(color, 0.35).fillRect(-6, -60, 12, 60);
+          g.setScale(0.2);
+          return g;
+        });
+        await tween({ targets: gs, scaleX: 1, scaleY: 1, alpha: { from: 1, to: 0.15 }, duration: 520, ease: 'Back.easeOut' });
+        gs.forEach((g) => g.destroy());
+      }
+
+      async projectile(from, to, color) {
+        const a = topCenter(from.tx, from.ty), b = topCenter(to.tx, to.ty);
+        const g = this.add.graphics().setDepth(1e6);
+        g.fillStyle(color, 1).fillRect(-5, -1, 10, 2);
+        g.setPosition(a.x, a.y - 30).setRotation(Math.atan2(b.y - a.y, b.x - a.x));
+        const peak = Math.min(a.y, b.y) - 60;
+        const obj = { t: 0 };
+        await tween({
+          targets: obj, t: 1, duration: 380,
+          onUpdate: () => {
+            const t = obj.t;
+            const x = a.x + (b.x - a.x) * t;
+            const y = (1 - t) * (1 - t) * (a.y - 30) + 2 * (1 - t) * t * peak + t * t * (b.y - 30);
+            g.setPosition(x, y);
+          },
+        });
+        g.destroy();
+      }
+
+      async lunge(u, target) {
+        const a = topCenter(u.tx, u.ty), b = topCenter(target.tx, target.ty);
+        const dx = (b.x - a.x) * 0.3, dy = (b.y - a.y) * 0.3;
+        u.lunge = { x: 0, y: 0 };
+        await tween({ targets: u.lunge, x: dx, y: dy, duration: 110, yoyo: true, ease: 'Quad.easeOut' });
+        u.lunge = null;
+      }
+
+      async walk(u, path) {
+        for (let i = 1; i < path.length; i++) {
+          const from = topCenter(path[i - 1].tx, path[i - 1].ty);
+          const to = topCenter(path[i].tx, path[i].ty);
+          u.face = dirToward(path[i - 1], path[i]);
+          const hop = Math.abs(tH(path[i].tx, path[i].ty) - tH(path[i - 1].tx, path[i - 1].ty)) > 0;
+          const obj = { t: 0 };
+          await tween({
+            targets: obj, t: 1, duration: hop ? 210 : 150,
+            onUpdate: () => {
+              const t = obj.t;
+              u.anim = {
+                x: from.x + (to.x - from.x) * t,
+                y: from.y + (to.y - from.y) * t - (hop ? Math.sin(t * Math.PI) * 14 : 0),
+                depth: Math.max(from.depth, to.depth),
+              };
+            },
+          });
+        }
+        const last = path[path.length - 1];
+        u.tx = last.tx; u.ty = last.ty;
+        u.anim = null;
+      }
+    };
+  }
+
+  /* =====================================================================
+     6. DOM interface
+     ===================================================================== */
+
+  function portraitInto(canvas, u) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    const src = u.crystal ? null : unitCanvas(u.job, u.team, false);
+    if (src) ctx.drawImage(src, 0, 0, 40, 40, (canvas.width - 80) / 2, 4, 80, 80);
+  }
+
+  function bar(label, cls, val, max) {
+    const pct = max ? clamp((val / max) * 100, 0, 100) : 0;
+    return `<span>${label}</span><div class="progress ${cls}"><div class="progress-bar" style="width:${pct}%"></div></div><span class="num">${val}/${max}</span>`;
+  }
+
+  function renderCard(el, u) {
+    if (!u) { el.hidden = true; el.dataset.unit = ''; return; }
+    el.hidden = false;
+    el.dataset.unit = u.id;
+    el.dataset.team = u.team;
+    const j = JOBS[u.job];
+    const tags = [];
+    if (u.ko) tags.push(`<span class="tag ko">KO ${u.koCount}</span>`);
+    if (u.crystal) tags.push('<span class="tag ko">Crystal</span>');
+    if (u.charging) tags.push(`<span class="tag charge">Charging ${u.charging.skill.name}</span>`);
+    el.innerHTML = `
+      <canvas class="portrait" width="74" height="96"></canvas>
+      <div class="team-${u.team}">
+        <div class="name">${u.name}</div>
+        <div class="job">${j.name} &middot; Lv ${u.lv} &middot; Exp ${u.exp}</div>
+        <div>${tags.join(' ')}</div>
+      </div>
+      <div class="bars">
+        <span>HP</span><div class="progress bar-hp" data-testid="hp-bar"><div class="progress-bar" style="width:${(u.hp / u.maxHp) * 100}%"></div></div><span class="num" data-testid="hp">${u.hp}/${u.maxHp}</span>
+        ${bar('MP', 'bar-mp', u.mp, u.maxMp)}
+        ${bar('CT', 'bar-ct', clamp(u.ct, 0, 100), 100)}
+      </div>
+      <div class="stats-line">
+        <span>Mv <b>${u.move}</b></span><span>Jp <b>${u.jump}</b></span><span>Sp <b>${u.spd}</b></span>
+        <span>PA <b>${u.pa}</b></span><span>MA <b>${u.ma}</b></span>
+        <span>Br <b>${u.brave}</b></span><span>Fa <b>${u.faith}</b></span>
+      </div>`;
+    portraitInto(el.querySelector('canvas'), u);
+  }
+
+  function refreshPanels() {
+    renderCard($('active-panel'), state.active);
+    const h = state.hover && unitAt(state.hover.tx, state.hover.ty);
+    renderCard($('target-panel'), h && h !== state.active ? h : null);
+    renderTurnOrder();
+    $('clock').textContent = `Tick ${state.tick}`;
+  }
+
+  function renderTurnOrder() {
+    const list = $('turn-list');
+    list.innerHTML = '';
+    for (const e of forecastOrder(10)) {
+      const li = document.createElement('li');
+      if (e.type === 'unit') {
+        li.className = `${e.u.team}${e.now ? ' now' : ''}`;
+        li.dataset.unit = e.u.id;
+        const cv = document.createElement('canvas');
+        cv.width = 40; cv.height = 56;
+        cv.getContext('2d').drawImage(unitCanvas(e.u.job, e.u.team, false), 0, 0);
+        li.appendChild(cv);
+        li.append(e.u.name);
+        const at = document.createElement('span');
+        at.className = 'at';
+        at.textContent = e.now ? 'now' : JOBS[e.u.job].name;
+        li.appendChild(at);
+      } else {
+        li.className = 'spell';
+        li.textContent = `✦ ${e.p.skill.name} — ${e.p.caster.name}`;
+      }
+      list.appendChild(li);
+    }
+  }
+
+  function log(text) { $('log').innerHTML = text; }
+
+  function banner(text, side) {
+    const el = $('banner');
+    el.textContent = text;
+    el.className = `show ${side === 'enemy' ? 'enemy' : ''}`;
+    clearTimeout(banner.t);
+    banner.t = setTimeout(() => { el.className = ''; }, state.fast ? 500 : 1300);
+  }
+
+  function setMode(m) {
+    state.mode = m;
+    body.dataset.mode = m;
+  }
+
+  function hideMenus() {
+    $('cmd-menu').hidden = true;
+    $('facing-panel').hidden = true;
+    $('forecast').hidden = true;
+  }
+
+  function menu(title, items, help = '') {
+    $('facing-panel').hidden = true;
+    const m = $('cmd-menu');
+    $('cmd-title').textContent = title;
+    $('cmd-help').textContent = help;
+    const list = $('cmd-list');
+    list.innerHTML = '';
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'list-group-item list-group-item-action';
+      b.dataset.testid = it.testid;
+      b.setAttribute('data-testid', it.testid);
+      b.innerHTML = it.label + (it.cost ? `<span class="cost">${it.cost}</span>` : '');
+      b.disabled = !!it.disabled;
+      b.addEventListener('click', it.run);
+      list.appendChild(b);
+    }
+    m.hidden = false;
+  }
+
+  /* ---------- minimap ---------- */
+
+  let miniBase = null;
+  function buildMinimap() {
+    const cv = $('minimap');
+    const ctx = cv.getContext('2d');
+    const img = ctx.createImageData(MAP, MAP);
+    const { type, height } = state.map;
+    for (let k = 0; k < MAP * MAP; k++) {
+      const t = type[k], h = height[k];
+      const l = 0.7 + h * 0.03;
+      let r, g, b;
+      if (t === T_WATER) { r = 40; g = 96; b = 170; }
+      else if (t === T_BAD) { r = 168 * l; g = 112 * l; b = 70 * l; }
+      else { r = 84 * l; g = 150 * l; b = 60 * l; }
+      img.data[k * 4] = r; img.data[k * 4 + 1] = g; img.data[k * 4 + 2] = b; img.data[k * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    miniBase = makeCanvas(MAP, MAP);
+    miniBase.getContext('2d').drawImage(cv, 0, 0);
+  }
+
+  function drawMinimap() {
+    if (!miniBase || !scene) return;
+    const ctx = $('minimap').getContext('2d');
+    ctx.drawImage(miniBase, 0, 0);
+    // The camera footprint, projected back onto the tile grid.
+    const v = scene.view();
+    const pts = [[v.x, v.y], [v.x + v.w, v.y], [v.x + v.w, v.y + v.h], [v.x, v.y + v.h]].map(([x, y]) => {
+      const [vx, vy] = scene.constructor.worldToView(x, y);
+      return fromView(vx, vy);
+    });
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.stroke();
+    for (const u of state.units) {
+      if (u.crystal) continue;
+      ctx.fillStyle = u.team === 'ally' ? '#6fd0ff' : '#ff5a4a';
+      ctx.fillRect(u.tx - 3, u.ty - 3, 7, 7);
+    }
+  }
+
+  /* =====================================================================
+     7. Turn flow
+     ===================================================================== */
+
+  function skillUsable(u, key) {
+    const s = SKILLS[key];
+    return u.mp >= s.mp;
+  }
+
+  function affectedBy(skill, tx, ty) {
+    const tiles = skill.aoe ? areaTiles(skill, tx, ty) : [{ tx, ty }];
+    const out = [];
+    for (const t of tiles) {
+      const u = unitAt(t.tx, t.ty);
+      if (u) out.push(u);
+    }
+    return { tiles, units: out };
+  }
+
+  function gainExp(u, amount) {
+    u.exp += amount;
+    if (u.exp >= 100) {
+      u.exp -= 100;
+      u.lv += 1;
+      u.maxHp += 8; u.hp = Math.min(u.maxHp, u.hp + 8);
+      u.maxMp += 2;
+      if (u.lv % 2) u.pa += 1; else u.ma += 1;
+      scene.popup(u.tx, u.ty, 'LEVEL UP!', '#ffe08a');
+    }
+  }
+
+  function knockOut(u) {
+    u.hp = 0;
+    u.ko = true;
+    u.koCount = 3;
+    if (u.charging) {
+      state.pending = state.pending.filter((p) => p.caster !== u);
+      u.charging = null;
+    }
+  }
+
+  async function applyOutcome(actor, skill, target, ax, ay) {
+    const pr = predict(actor, skill, target, ax, ay);
+    if (!pr) return false;
+    if (Math.random() * 100 >= pr.hit) {
+      scene.popup(target.tx, target.ty, 'MISS', '#ffffff');
+      return false;
+    }
+    if (skill.kind === 'raise') {
+      target.ko = false; target.koCount = 0; target.hp = pr.amount; target.ct = 0;
+      scene.popup(target.tx, target.ty, `+${pr.amount}`, '#9cf58a');
+      return true;
+    }
+    if (pr.amount < 0) {
+      const amt = Math.min(-pr.amount, target.maxHp - target.hp);
+      target.hp += amt;
+      scene.popup(target.tx, target.ty, `+${amt}`, '#9cf58a');
+      return true;
+    }
+    let dmg = pr.amount;
+    const crit = skill.kind === 'phys' && Math.random() < 0.05;
+    if (crit) dmg = Math.floor(dmg * 1.5);
+    target.hp = Math.max(0, target.hp - dmg);
+    scene.popup(target.tx, target.ty, `${dmg}${crit ? '!' : ''}`, '#ffffff');
+    if (target.hp <= 0) {
+      knockOut(target);
+      log(`<b>${target.name}</b> has fallen!`);
+      gainExp(actor, 10);
+    }
+    // Shield Shove: push one tile directly away when there is room to land.
+    if (skill.push && standing(target)) {
+      const dx = Math.sign(target.tx - ax), dy = Math.sign(target.ty - ay);
+      const nx = target.tx + dx, ny = target.ty + dy;
+      if (walkable(nx, ny) && !unitAt(nx, ny) && tH(nx, ny) <= tH(target.tx, target.ty) + 1) {
+        await scene.walk(target, [{ tx: target.tx, ty: target.ty }, { tx: nx, ty: ny }]);
+        target.face = dirToward(target, { tx: ax, ty: ay });
+        const drop = tH(target.tx - dx, target.ty - dy) - tH(nx, ny);
+        if (drop > 3) {
+          const fall = Math.floor(target.maxHp * 0.1 * (drop - 3));
+          target.hp = Math.max(0, target.hp - fall);
+          scene.popup(nx, ny, `${fall}`, '#ffb0a0');
+          if (target.hp <= 0) knockOut(target);
+        }
+      }
+    }
+    return true;
+  }
+
+  async function resolveAction(actor, skill, tx, ty) {
+    if (!standing(actor)) return;
+    const { tiles, units } = affectedBy(skill, tx, ty);
+    actor.face = tx === actor.tx && ty === actor.ty ? actor.face : dirToward(actor, { tx, ty });
+    await scene.lookAt(tx, ty, 250);
+    log(`<b>${actor.name}</b> &raquo; ${skill.name}`);
+
+    const weapon = JOBS[actor.job].weapon;
+    if (skill.kind === 'phys') {
+      if (weapon === 'bow' && skill.range === 'weapon') await scene.projectile(actor, { tx, ty }, skill.fx || 0xffffff);
+      else if (skill.range !== 'weapon' && skill.range.min > 1) await scene.burst(tiles, skill.fx);
+      else await scene.lunge(actor, { tx, ty });
+    } else {
+      await scene.burst(tiles, skill.fx);
+    }
+
+    let affected = 0;
+    for (const t of units) {
+      if (skill.kind === 'raise' ? !t.ko : !standing(t)) continue;
+      const hit = await applyOutcome(actor, skill, t, actor.tx, actor.ty);
+      if (hit && t !== actor) {
+        affected++;
+        gainExp(actor, 10 + Math.max(0, t.lv - actor.lv) * 2);
+      }
+    }
+    if (!affected && !units.length) scene.popup(tx, ty, 'No target', '#cccccc');
+    await sleep(320);
+
+    // Counter: one adjacent single-target physical blow invites a reply.
+    if (skill.kind === 'phys' && !skill.aoe && units.length === 1) {
+      const def = units[0];
+      if (def !== actor && standing(def) && standing(actor) && JOBS[def.job].counter && manhattan(def, actor) === 1
+          && def.team !== actor.team && Math.random() * 100 < def.brave) {
+        def.face = dirToward(def, actor);
+        log(`<b>${def.name}</b> counters!`);
+        await scene.lunge(def, actor);
+        await applyOutcome(def, SKILLS.attack, actor, def.tx, def.ty);
+        await sleep(300);
+      }
+    }
+    refreshPanels();
+  }
+
+  async function commitAction(u, key, tx, ty) {
+    const skill = SKILLS[key];
+    u.mp -= skill.mp;
+    u.acted = true;
+    if (skill.ctr > 0) {
+      const p = { caster: u, skill, key, tx, ty, ctr: skill.ctr };
+      state.pending.push(p);
+      u.charging = p;
+      u.face = dirToward(u, { tx, ty });
+      log(`<b>${u.name}</b> begins charging ${skill.name}&hellip;`);
+      scene.popup(u.tx, u.ty, skill.name, '#ffd6a0');
+      await sleep(450);
+    } else {
+      await resolveAction(u, skill, tx, ty);
+    }
+    checkEnd();
+  }
+
+  function checkEnd() {
+    if (state.over) return true;
+    const allies = living('ally').length, enemies = living('enemy').length;
+    if (allies && enemies) return false;
+    state.over = true;
+    setMode('over');
+    hideMenus();
+    const win = enemies === 0;
+    body.dataset.result = win ? 'victory' : 'defeat';
+    $('result-title').textContent = win ? 'VICTORY' : 'DEFEAT';
+    $('result-text').textContent = win
+      ? `The Thornwake raiders are broken after ${state.tick} ticks.`
+      : 'The Ashen Banner falls in the Vale of Corwen.';
+    setTimeout(() => { $('overlay-result').hidden = false; }, state.fast ? 300 : 1200);
+    return true;
+  }
+
+  // The Charge Time clock. Runs until a unit is ready, resolving any charged
+  // spells whose countdown reaches zero along the way.
+  async function advanceClock() {
+    while (!state.over) {
+      const due = state.pending.filter((p) => p.ctr <= 0);
+      if (due.length) {
+        const p = due[0];
+        state.pending = state.pending.filter((x) => x !== p);
+        p.caster.charging = null;
+        banner(p.skill.name, p.caster.team);
+        await resolveAction(p.caster, p.skill, p.tx, p.ty);
+        if (checkEnd()) return;
+        continue;
+      }
+      const ready = state.units.filter((u) => standing(u) && !u.charging && u.ct >= 100).sort((a, b) => b.ct - a.ct || b.spd - a.spd);
+      if (ready.length) { await beginTurn(ready[0]); return; }
+
+      state.tick++;
+      for (const u of state.units) {
+        if (u.crystal) continue;
+        u.ct += u.spd;
+        // A fallen unit's turns still come round; each one burns a count.
+        if (u.ko && u.ct >= 100) {
+          u.ct -= 100;
+          u.koCount--;
+          if (u.koCount <= 0) {
+            u.crystal = true; u.ko = false;
+            log(`<b>${u.name}</b> has turned to crystal.`);
+          }
+        }
+        if (u.charging && u.ct > 100) u.ct = 100;
+      }
+      for (const p of state.pending) p.ctr--;
+    }
+  }
+
+  async function beginTurn(u) {
+    state.active = u;
+    u.moved = false;
+    u.acted = false;
+    body.dataset.active = u.id;
+    body.dataset.side = u.team;
+    hideMenus();
+    scene.setHighlights([]);
+    refreshPanels();
+    await scene.lookAt(u.tx, u.ty, 400);
+    if (u.team === 'ally') {
+      banner(`${u.name}'s turn`, 'ally');
+      showMainMenu();
+    } else {
+      setMode('busy');
+      banner(`${u.name}'s turn`, 'enemy');
+      await sleep(350);
+      await enemyTurn(u);
+      if (!state.over) await endTurn(u);
+    }
+  }
+
+  async function endTurn(u) {
+    u.ct = Math.min(u.ct - ctCost(u), 60);
+    state.active = null;
+    hideMenus();
+    scene.setHighlights([]);
+    setMode('busy');
+    refreshPanels();
+    await advanceClock();
+  }
+
+  function showMainMenu() {
+    const u = state.active;
+    if (!u || state.over) return;
+    if (u.moved && u.acted) { startFacing(); return; }
+    setMode('menu');
+    scene.setHighlights([]);
+    $('forecast').hidden = true;
+    menu(u.name, [
+      { label: 'Move', testid: 'cmd-move', disabled: u.moved, run: startMove },
+      { label: 'Act', testid: 'cmd-act', disabled: u.acted, run: showActMenu },
+      { label: 'Wait', testid: 'cmd-wait', run: startFacing },
+      { label: 'Status', testid: 'cmd-status', run: () => showStatus(u) },
+    ], 'Esc / right-click to go back');
+    refreshPanels();
+  }
+
+  function showActMenu() {
+    const u = state.active;
+    setMode('act-menu');
+    const items = [{ label: 'Attack', testid: 'act-attack', run: () => startTarget('attack') }];
+    for (const key of JOBS[u.job].skills) {
+      const s = SKILLS[key];
+      items.push({
+        label: s.name, testid: `act-${key}`, disabled: !skillUsable(u, key), run: () => startTarget(key),
+        cost: [s.mp ? `${s.mp} MP` : '', s.ctr ? `CT ${s.ctr}` : ''].filter(Boolean).join(' · '),
+      });
+    }
+    menu(`${JOBS[u.job].name} skills`, items, 'Charged skills land after the CT shown');
+  }
+
+  function startMove() {
+    const u = state.active;
+    setMode('move');
+    state.reach = reachable(u);
+    const hl = [];
+    for (const n of state.reach.values()) if (!n.passOnly) hl.push({ tx: n.tx, ty: n.ty, key: 'hl_move' });
+    scene.setHighlights(hl);
+    $('cmd-menu').hidden = true;
+    log('Choose where to move.');
+  }
+
+  function startTarget(key) {
+    const u = state.active;
+    const skill = SKILLS[key];
+    state.skill = key;
+    setMode('target');
+    state.targets = targetTiles(u, skill);
+    scene.setHighlights(state.targets.map((t) => ({ ...t, key: 'hl_atk' })));
+    $('cmd-menu').hidden = true;
+    log(`${skill.name}: choose a target.`);
+    if (state.hover) onHover(state.hover);
+  }
+
+  function startFacing() {
+    const u = state.active;
+    setMode('facing');
+    state.facingChoice = u.face;
+    scene.setHighlights([]);
+    $('cmd-menu').hidden = true;
+    $('forecast').hidden = true;
+    $('facing-panel').hidden = false;
+    syncFacingButtons();
+    log('Choose a facing, then confirm.');
+  }
+
+  function syncFacingButtons() {
+    const q = screenDir(state.facingChoice);
+    for (const b of document.querySelectorAll('#facing-panel [data-face]')) b.classList.toggle('active', b.dataset.face === q);
+    if (state.active) state.active.face = state.facingChoice;
+  }
+
+  function showStatus(u) {
+    const j = JOBS[u.job];
+    const skills = j.skills.map((k) => SKILLS[k].name).join(', ');
+    $('status-title').textContent = `${u.name} — ${j.name} Lv ${u.lv}`;
+    $('status-body').innerHTML = `
+      <table class="table table-sm table-borderless mb-0">
+        <tr><td>HP</td><td>${u.hp}/${u.maxHp}</td><td>MP</td><td>${u.mp}/${u.maxMp}</td></tr>
+        <tr><td>Move</td><td>${u.move}</td><td>Jump</td><td>${u.jump}</td></tr>
+        <tr><td>Speed</td><td>${u.spd}</td><td>CT</td><td>${u.ct}</td></tr>
+        <tr><td>PA</td><td>${u.pa}</td><td>MA</td><td>${u.ma}</td></tr>
+        <tr><td>Brave</td><td>${u.brave}</td><td>Faith</td><td>${u.faith}</td></tr>
+        <tr><td>Weapon</td><td>${j.weapon}</td><td>Evade</td><td>${j.ev}%</td></tr>
+        <tr><td>Skills</td><td colspan="3">${skills}</td></tr>
+        <tr><td>Reaction</td><td colspan="3">${j.counter ? 'Counter (Brave%)' : '—'}</td></tr>
+      </table>`;
+    bootstrap.Modal.getOrCreateInstance($('status-modal')).show();
+  }
+
+  function cancel() {
+    if (state.over) return;
+    if (state.mode === 'move' || state.mode === 'act-menu' || state.mode === 'facing') showMainMenu();
+    else if (state.mode === 'target') { showActMenu(); scene.setHighlights([]); $('forecast').hidden = true; }
+  }
+
+  function onHover(t) {
+    state.hover = t;
+    scene.setCursor(t);
+    if (!t) return;
+    $('tile-type').textContent = TERRAIN_NAME[tType(t.tx, t.ty)];
+    $('tile-h').textContent = tH(t.tx, t.ty);
+    $('tile-xy').textContent = `${t.tx}, ${t.ty}`;
+    const hu = unitAt(t.tx, t.ty);
+    const show = hu && hu !== state.active ? hu : null;
+    if ((show?.id || '') !== $('target-panel').dataset.unit) renderCard($('target-panel'), show);
+
+    if (state.mode === 'target') {
+      const u = state.active;
+      const skill = SKILLS[state.skill];
+      const inRange = state.targets.some((x) => x.tx === t.tx && x.ty === t.ty);
+      const base = state.targets.map((x) => ({ ...x, key: 'hl_atk' }));
+      if (!inRange) { scene.setHighlights(base); $('forecast').hidden = true; return; }
+      const area = skill.aoe ? areaTiles(skill, t.tx, t.ty) : [t];
+      scene.setHighlights([...base, ...area.map((x) => ({ ...x, key: 'hl_aoe' }))]);
+      const tgt = affectedBy(skill, t.tx, t.ty).units.find((x) => skill.kind === 'raise' ? x.ko : standing(x));
+      const fc = $('forecast');
+      fc.hidden = false;
+      $('fc-name').textContent = skill.name + (skill.ctr ? ` (CT ${skill.ctr})` : '');
+      if (!tgt) { $('fc-hit').textContent = '--'; $('fc-eff').textContent = 'No target'; return; }
+      const pr = predict(u, skill, tgt);
+      if (!pr) { $('fc-hit').textContent = '--'; $('fc-eff').textContent = 'No effect'; return; }
+      $('fc-hit').textContent = `${pr.hit}%`;
+      $('fc-eff').textContent = `${tgt.name}: ${pr.amount < 0 ? `+${-pr.amount} HP` : skill.kind === 'raise' ? 'Revive' : `${pr.amount} dmg`}${pr.angle ? ` · ${pr.angle}` : ''}`;
+    }
+  }
+
+  async function onClickTile(t) {
+    const u = state.active;
+    if (state.mode === 'facing' && u) {
+      if (t.tx !== u.tx || t.ty !== u.ty) { state.facingChoice = dirToward(u, t); syncFacingButtons(); }
+      return;
+    }
+    if (state.mode === 'move' && u) {
+      const n = state.reach.get(idx(t.tx, t.ty));
+      if (!n || n.passOnly) return;
+      setMode('busy');
+      scene.setHighlights([]);
+      const path = pathTo(state.reach, t.tx, t.ty);
+      await scene.walk(u, path);
+      u.moved = true;
+      refreshPanels();
+      showMainMenu();
+      return;
+    }
+    if (state.mode === 'target' && u) {
+      if (!state.targets.some((x) => x.tx === t.tx && x.ty === t.ty)) return;
+      const skill = SKILLS[state.skill];
+      if (!skill.aoe && !unitAt(t.tx, t.ty) && !skill.ctr) return;
+      setMode('busy');
+      scene.setHighlights([]);
+      $('forecast').hidden = true;
+      await commitAction(u, state.skill, t.tx, t.ty);
+      if (!state.over) showMainMenu();
+      return;
+    }
+    // Idle clicks just inspect.
+    const hu = unitAt(t.tx, t.ty);
+    if (hu) renderCard($('target-panel'), hu);
+  }
+
+  function rotate(d) {
+    if (state.mode === 'busy' || !scene) return;
+    const cam = scene.cameras.main;
+    const mid = scene.screenToWorld(cam.width / 2, cam.height / 2);
+    const [vx, vy] = scene.constructor.worldToView(mid.x, mid.y + 6 * HPX);
+    const [tx, ty] = fromView(clamp(vx, 0, MAP - 1), clamp(vy, 0, MAP - 1));
+    rot = (rot + d + 4) % 4;
+    body.dataset.rot = String(rot);
+    const c = topCenter(tx, ty);
+    cam.centerOn(c.x, c.y);
+    scene.dirty = true;
+    scene.drawHighlights();
+    scene.setCursor(state.hover);
+    if (state.mode === 'facing') syncFacingButtons();
+  }
+
+  function onKey(ev) {
+    if (document.querySelector('.modal.show')) return;
+    const k = ev.key;
+    if (k === 'Escape') cancel();
+    else if (k === 'q' || k === 'Q') rotate(-1);
+    else if (k === 'e' || k === 'E') rotate(1);
+    else if ((k === 'c' || k === 'C') && state.active) scene.lookAt(state.active.tx, state.active.ty);
+    else if (state.mode === 'facing') {
+      const map = { ArrowUp: 'ne', ArrowRight: 'se', ArrowDown: 'sw', ArrowLeft: 'nw' };
+      if (map[k]) { state.facingChoice = dirFromScreen(map[k]); syncFacingButtons(); }
+      if (k === 'Enter') confirmFacing();
+    }
+  }
+
+  function confirmFacing() {
+    const u = state.active;
+    if (!u || state.mode !== 'facing') return;
+    u.face = state.facingChoice;
+    endTurn(u);
+  }
+
+  /* ---------- enemy AI ---------- */
+
+  // Distance field from every standing ally, over terrain this unit can climb.
+  function distanceField(u) {
+    const dist = new Map();
+    let frontier = [];
+    for (const a of living('ally')) { dist.set(idx(a.tx, a.ty), 0); frontier.push(a); }
+    for (let d = 1; d < 60 && frontier.length; d++) {
+      const next = [];
+      for (const p of frontier) {
+        for (const [dx, dy] of DIRS) {
+          const nx = p.tx + dx, ny = p.ty + dy;
+          if (!walkable(nx, ny) || dist.has(idx(nx, ny))) continue;
+          if (Math.abs(tH(nx, ny) - tH(p.tx, p.ty)) > u.jump) continue;
+          dist.set(idx(nx, ny), d);
+          next.push({ tx: nx, ty: ny });
+        }
+      }
+      frontier = next;
+    }
+    return dist;
+  }
+
+  function scorePlan(u, key, from, tx, ty) {
+    const skill = SKILLS[key];
+    const { units } = affectedBy(skill, tx, ty);
+    let score = 0;
+    for (const t of units) {
+      // Where u will be standing when this lands (charged spells: where it cast from).
+      const asSelf = t === u ? { ...t, tx: from.tx, ty: from.ty } : t;
+      const pr = predict({ ...u, tx: from.tx, ty: from.ty }, skill, asSelf, from.tx, from.ty);
+      if (!pr) continue;
+      const exp = (pr.hit / 100);
+      if (skill.kind === 'raise') { score += t.team === u.team ? 120 : -200; continue; }
+      if (pr.amount < 0) {
+        const need = t.maxHp - t.hp;
+        const v = Math.min(-pr.amount, need);
+        score += (t.team === u.team ? v : -v) * (need > t.maxHp * 0.3 ? 1.2 : 0.3);
+        continue;
+      }
+      const dmg = Math.min(pr.amount, t.hp) * exp;
+      const kill = pr.amount >= t.hp ? 40 * exp : 0;
+      score += t.team !== u.team ? dmg + kill : -(dmg + kill) * 1.5;
+    }
+    if (skill.ctr) score *= 0.7;
+    return score;
+  }
+
+  async function enemyTurn(u) {
+    const reach = reachable(u);
+    const spots = [...reach.values()].filter((n) => !n.passOnly);
+    let best = null;
+    const keys = ['attack', ...JOBS[u.job].skills].filter((k) => skillUsable(u, k));
+    for (const spot of spots) {
+      for (const key of keys) {
+        const skill = SKILLS[key];
+        for (const t of targetTiles(u, skill, spot.tx, spot.ty)) {
+          if (!skill.aoe && !unitAt(t.tx, t.ty) && !(t.tx === spot.tx && t.ty === spot.ty)) continue;
+          // The mover vacates its own tile, so treat it as being at `spot`.
+          const savedX = u.tx, savedY = u.ty;
+          u.tx = spot.tx; u.ty = spot.ty;
+          const s = scorePlan(u, key, spot, t.tx, t.ty) - spot.cost * 0.5;
+          u.tx = savedX; u.ty = savedY;
+          if (s > 0 && (!best || s > best.score)) best = { score: s, spot, key, tx: t.tx, ty: t.ty };
+        }
+      }
+    }
+
+    if (best) {
+      if (best.spot.tx !== u.tx || best.spot.ty !== u.ty) {
+        await scene.walk(u, pathTo(reach, best.spot.tx, best.spot.ty));
+        u.moved = true;
+      }
+      await commitAction(u, best.key, best.tx, best.ty);
+    } else {
+      // Close the distance, preferring high ground on ties.
+      const dist = distanceField(u);
+      let to = null;
+      for (const s of spots) {
+        const d = dist.get(idx(s.tx, s.ty)) ?? 999;
+        const v = d * 10 - tH(s.tx, s.ty);
+        if (!to || v < to.v) to = { s, v };
+      }
+      if (to && (to.s.tx !== u.tx || to.s.ty !== u.ty)) {
+        await scene.walk(u, pathTo(reach, to.s.tx, to.s.ty));
+        u.moved = true;
+      }
+    }
+    if (state.over) return;
+    // Face the nearest threat so the back is not exposed.
+    const foes = living('ally');
+    if (foes.length && !u.charging) {
+      const near = foes.reduce((a, b) => (manhattan(u, a) <= manhattan(u, b) ? a : b));
+      u.face = dirToward(u, near);
+    }
+    await sleep(250);
+  }
+
+  /* =====================================================================
+     8. Boot
+     ===================================================================== */
+
+  function boot() {
+    if (typeof Phaser === 'undefined') {
+      $('overlay-title').hidden = true;
+      $('overlay-error').hidden = false;
+      body.dataset.boot = 'failed';
+      return;
+    }
+    $('title-seed').textContent = SEED;
+    const t0 = performance.now();
+    state.map = generateMap(SEED);
+    deploy();
+    buildMinimap();
+    body.dataset.mapSize = String(MAP);
+    body.dataset.genMs = String(Math.round(performance.now() - t0));
+
+    const BattleScene = defineScene();
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      backgroundColor: '#070a18',
+      scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+      scene: [],
+      render: { antialias: true },
+      fps: { smoothStep: false },
+    });
+    game.scene.add('battle', BattleScene, false);
+
+    const start = $('btn-start');
+    start.disabled = false;
+    start.textContent = 'Begin battle';
+    start.addEventListener('click', () => {
+      $('overlay-title').hidden = true;
+      for (const id of ['topbar', 'turn-order', 'log', 'tile-panel', 'minimap-panel']) $(id).hidden = false;
+      game.scene.start('battle');
+      const waitScene = async () => {
+        scene = game.scene.getScene('battle');
+        if (!scene || !scene.pool) { requestAnimationFrame(waitScene); return; }
+        body.dataset.boot = 'ready';
+        log('The Thornwake raiders hold the ford. Drive them off!');
+        refreshPanels();
+        setMode('busy');
+        await advanceClock();
+      };
+      waitScene();
+    });
+
+    $('btn-title-help').addEventListener('click', () => bootstrap.Modal.getOrCreateInstance($('help-modal')).show());
+    $('btn-help').addEventListener('click', () => bootstrap.Modal.getOrCreateInstance($('help-modal')).show());
+    $('btn-rot-l').addEventListener('click', () => rotate(-1));
+    $('btn-rot-r').addEventListener('click', () => rotate(1));
+    $('btn-center').addEventListener('click', () => state.active && scene.lookAt(state.active.tx, state.active.ty));
+    $('toggle-fast').addEventListener('change', (e) => { state.fast = e.target.checked; });
+    $('btn-face-ok').addEventListener('click', confirmFacing);
+    for (const b of document.querySelectorAll('#facing-panel [data-face]')) {
+      b.addEventListener('click', () => { state.facingChoice = dirFromScreen(b.dataset.face); syncFacingButtons(); });
+    }
+    $('btn-again').addEventListener('click', () => {
+      const u = new URL(location.href);
+      u.searchParams.set('seed', String(Math.floor(Math.random() * 1e6) + 1));
+      location.href = u.toString();
+    });
+    $('minimap').addEventListener('click', (ev) => {
+      if (!scene) return;
+      const r = ev.currentTarget.getBoundingClientRect();
+      const tx = clamp(Math.floor(((ev.clientX - r.left) / r.width) * MAP), 0, MAP - 1);
+      const ty = clamp(Math.floor(((ev.clientY - r.top) / r.height) * MAP), 0, MAP - 1);
+      const c = topCenter(tx, ty);
+      scene.cameras.main.centerOn(c.x, c.y);
+    });
+
+    // Test and debugging hook. Read-only helpers; the game never depends on it.
+    window.__fft = {
+      state,
+      terrainCounts() {
+        const c = [0, 0, 0];
+        for (const t of state.map.type) c[t]++;
+        return { grass: c[0], badland: c[1], water: c[2] };
+      },
+      heightRange() {
+        let lo = 99, hi = 0;
+        for (const h of state.map.height) { if (h < lo) lo = h; if (h > hi) hi = h; }
+        return { lo, hi };
+      },
+      unitScreen(id) {
+        const u = state.units.find((x) => x.id === id);
+        return scene.tileScreen(u.tx, u.ty);
+      },
+      tileScreen: (tx, ty) => scene.tileScreen(tx, ty),
+      pick: (x, y) => scene.pickTile(x, y),
+      reach: () => (state.reach ? [...state.reach.values()].filter((n) => !n.passOnly).map((n) => ({ tx: n.tx, ty: n.ty })) : []),
+      active: () => state.active && { id: state.active.id, tx: state.active.tx, ty: state.active.ty, team: state.active.team },
+    };
+    body.dataset.boot = 'title';
+  }
+
+  function loadFallback() {
+    const script = document.createElement('script');
+    script.src = '/vendor/phaser-4.2.1/phaser.min.js';
+    script.onload = boot;
+    script.onerror = boot;
+    document.head.appendChild(script);
+  }
+
+  // Bootstrap's JS loads after this script; wait for it before booting.
+  window.addEventListener('load', () => {
+    if (window.Phaser) boot();
+    else loadFallback();
+  });
+  })();
+  </script>
+
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    onerror="this.onerror=null;this.src='/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js'"
+  ></script>
+</body>
+</html>
