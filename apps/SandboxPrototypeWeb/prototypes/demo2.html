@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeus Prototype: Master of Sandbox</title>
+
+    <!-- Bootstrap 5.3 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Phaser 3 CDN (using 3.80.1 for native, stable Isometric Tilemap support) -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+        /* Greek / Zeus styling */
+        .zeus-ui {
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            border-left: 4px solid #b89947;
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        .zeus-header {
+            background: linear-gradient(to right, #2b2b2b 0%, #1a1a1a 100%);
+            border-bottom: 3px solid #b89947;
+            font-family: 'Georgia', serif;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .btn-tool {
+            border: 2px solid #b89947;
+            color: #333;
+            font-weight: bold;
+            background-color: #f8f9fa;
+            transition: all 0.2s;
+            text-align: left;
+        }
+        .btn-tool:hover, .btn-tool.active {
+            background-color: #b89947;
+            color: #fff;
+            transform: scale(1.02);
+        }
+        .btn-demolish {
+            border: 2px solid #dc3545;
+            color: #dc3545;
+            background-color: #fff;
+            font-weight: bold;
+        }
+        .btn-demolish:hover, .btn-demolish.active {
+            background-color: #dc3545;
+            color: #fff;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        .resource-text {
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body class="d-flex flex-column vh-100 m-0">
+
+<!-- Top Navigation / Resource Bar -->
+<div class="zeus-header text-warning p-2 d-flex justify-content-between align-items-center px-4">
+    <h4 class="m-0">🏛️ Zeus: Sandbox Prototype</h4>
+    <div class="d-flex gap-4 fw-bold resource-text">
+        <span>👥 Population: <span id="popCount" class="text-white">0</span></span>
+        <span>💰 Drachma: <span id="moneyCount" class="text-white">1000</span></span>
+    </div>
+</div>
+
+<!-- Main Game Area -->
+<div class="d-flex flex-grow-1 overflow-hidden">
+    <!-- Phaser Canvas Container -->
+    <div id="game-container" class="flex-grow-1 position-relative"></div>
+
+    <!-- Sidebar Building Tools -->
+    <div class="zeus-ui p-3 d-flex flex-column" style="width: 320px;">
+        <h5 class="text-center pb-2 border-bottom border-secondary" style="color: #b89947;">Build Tools</h5>
+
+        <div class="d-grid gap-3 mt-3 flex-grow-1">
+            <button class="btn btn-tool" onclick="selectTool(event, 'house')">
+                🏠 Housing <br><small class="fw-normal">Cost: 10 💰 | Yield: +5 👥</small>
+            </button>
+            <button class="btn btn-tool" onclick="selectTool(event, 'farm')">
+                🌾 Farm <br><small class="fw-normal">Cost: 50 💰 | Requires Grass</small>
+            </button>
+            <button class="btn btn-tool" onclick="selectTool(event, 'road')">
+                🛤️ Road <br><small class="fw-normal">Cost: 2 💰</small>
+            </button>
+            <hr>
+            <button class="btn btn-demolish mt-auto" onclick="selectTool(event, 'demolish')">
+                🔨 Demolish
+            </button>
+        </div>
+
+        <div class="mt-4 p-3 bg-dark text-light rounded border border-secondary shadow-sm" style="font-size: 0.85rem;">
+            <strong class="text-warning">Controls:</strong><br>
+            🖱️ Click & Drag to Pan<br>
+            🖱️ Scroll Wheel to Zoom<br>
+            👆 Select tool & Click map to build
+        </div>
+    </div>
+</div>
+
+<!-- Intro Modal -->
+<div class="modal fade" id="introModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header zeus-header text-white">
+                <h5 class="modal-title text-warning">Welcome, Ruler!</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <p>Build a thriving city on this massive 512x512 landscape!</p>
+                <ul>
+                    <li><strong>Taxes:</strong> Every 5 seconds, you earn Drachma based on your Population.</li>
+                    <li><strong>Terrain:</strong> You cannot build on Water. Farms can only be placed on green Grasslands (not Badlands).</li>
+                    <li><strong>Navigation:</strong> Click and drag to pan across the massive map.</li>
+                </ul>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-tool w-100 text-center" data-bs-dismiss="modal">Begin Ruling</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- GAME STATE & UI LOGIC ---
+    window.currentTool = null;
+    window.resources = { pop: 0, money: 1000 };
+    window.buildings = {}; // Tracks placed buildings by coordinates
+
+    function selectTool(event, tool) {
+        window.currentTool = tool;
+        document.querySelectorAll('.btn-tool, .btn-demolish').forEach(btn => btn.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+    }
+
+    function updateResources(popDelta, moneyDelta) {
+        window.resources.pop += popDelta;
+        window.resources.money += moneyDelta;
+        document.getElementById('popCount').innerText = window.resources.pop;
+        document.getElementById('moneyCount').innerText = window.resources.money;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        new bootstrap.Modal(document.getElementById('introModal')).show();
+    });
+
+    // --- PHASER ENGINE LOGIC ---
+    const config = {
+        type: Phaser.AUTO,
+        scale: {
+            mode: Phaser.Scale.RESIZE,
+            parent: 'game-container',
+            width: '100%',
+            height: '100%'
+        },
+        backgroundColor: '#1a1a1a',
+        scene: {
+            preload: preload,
+            create: create
+        }
+    };
+
+    const game = new Phaser.Game(config);
+
+    // Map Size Configuration (512x512 tilemap as requested)
+    const MAP_SIZE = 512;
+
+    function preload() {
+        // Procedurally generate game textures (No external images required!)
+        let g = this.add.graphics();
+
+        // 1: Grassland (Green)
+        g.fillStyle(0x689F38, 1);
+        g.beginPath(); g.moveTo(32, 0); g.lineTo(64, 16); g.lineTo(32, 32); g.lineTo(0, 16); g.closePath(); g.fillPath();
+        g.lineStyle(1, 0x558B2F, 0.5); g.strokePath();
+
+        // 2: Water (Blue)
+        g.fillStyle(0x1976D2, 1);
+        g.beginPath(); g.moveTo(96, 0); g.lineTo(128, 16); g.lineTo(96, 32); g.lineTo(64, 16); g.closePath(); g.fillPath();
+        g.lineStyle(1, 0x1565C0, 0.5); g.strokePath();
+
+        // 3: Badland (Brown)
+        g.fillStyle(0x795548, 1);
+        g.beginPath(); g.moveTo(160, 0); g.lineTo(192, 16); g.lineTo(160, 32); g.lineTo(128, 16); g.closePath(); g.fillPath();
+        g.lineStyle(1, 0x5D4037, 0.5); g.strokePath();
+
+        g.generateTexture('tileset', 192, 32);
+        g.destroy();
+
+        // Texture: House (Zeus-style marble block)
+        let h = this.add.graphics();
+        h.fillStyle(0xE0E0E0, 1); h.beginPath(); h.moveTo(32,24); h.lineTo(56,36); h.lineTo(32,48); h.lineTo(8,36); h.closePath(); h.fillPath(); // Roof
+        h.fillStyle(0x9E9E9E, 1); h.beginPath(); h.moveTo(8,36); h.lineTo(32,48); h.lineTo(32,64); h.lineTo(8,52); h.closePath(); h.fillPath(); // Left Wall
+        h.fillStyle(0x757575, 1); h.beginPath(); h.moveTo(32,48); h.lineTo(56,36); h.lineTo(56,52); h.lineTo(32,64); h.closePath(); h.fillPath(); // Right Wall
+        // Greek pillars
+        h.fillStyle(0xFFFFFF, 1);
+        h.fillRect(12, 42, 4, 10); h.fillRect(20, 46, 4, 10); h.fillRect(28, 50, 4, 10);
+        h.generateTexture('house', 64, 64);
+        h.destroy();
+
+        // Texture: Farm (Wheat field)
+        let f = this.add.graphics();
+        f.fillStyle(0xFFD54F, 1); f.beginPath(); f.moveTo(32,0); f.lineTo(64,16); f.lineTo(32,32); f.lineTo(0,16); f.closePath(); f.fillPath();
+        f.lineStyle(2, 0x8D6E63, 1); f.strokePath();
+        f.generateTexture('farm', 64, 32);
+        f.destroy();
+
+        // Texture: Road
+        let r = this.add.graphics();
+        r.fillStyle(0xBDBDBD, 1); r.beginPath(); r.moveTo(32,2); r.lineTo(60,16); r.lineTo(32,30); r.lineTo(4,16); r.closePath(); r.fillPath();
+        r.generateTexture('road', 64, 32);
+        r.destroy();
+    }
+
+    function create() {
+        // Generate 512x512 Map Array
+        let mapData = [];
+        for (let y = 0; y < MAP_SIZE; y++) {
+            mapData.push(new Array(MAP_SIZE).fill(1)); // 1 = Grass
+        }
+
+        // Scatter organic clumps of Water (2) and Badland (3)
+        for (let i = 0; i < 1500; i++) {
+            let cx = Math.floor(Math.random() * MAP_SIZE);
+            let cy = Math.floor(Math.random() * MAP_SIZE);
+            let radius = Math.floor(Math.random() * 5) + 2;
+            let type = Math.random() > 0.6 ? 2 : 3; // 2=Water, 3=Badland
+
+            for (let y = -radius; y <= radius; y++) {
+                for (let x = -radius; x <= radius; x++) {
+                    if (x*x + y*y <= radius*radius) {
+                        if (cx+x >= 0 && cx+x < MAP_SIZE && cy+y >= 0 && cy+y < MAP_SIZE) {
+                            mapData[cy+y][cx+x] = type;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render Isometric Tilemap
+        const map = this.make.tilemap({
+            data: mapData,
+            tileWidth: 64,
+            tileHeight: 32,
+            orientation: Phaser.Tilemaps.Orientation.ISOMETRIC
+        });
+        const tiles = map.addTilesetImage('tileset', 'tileset', 64, 32);
+        const layer = map.createLayer(0, tiles, 0, 0);
+
+        // Center Camera on the map
+        this.cameras.main.centerOn(0, MAP_SIZE * 16 / 2);
+        this.cameras.main.setZoom(1);
+
+        // Controls: Panning via Drag
+        this.input.on('pointermove', (pointer) => {
+            if (pointer.isDown) {
+                this.cameras.main.scrollX -= (pointer.x - pointer.prevPosition.x) / this.cameras.main.zoom;
+                this.cameras.main.scrollY -= (pointer.y - pointer.prevPosition.y) / this.cameras.main.zoom;
+            }
+        });
+
+        // Controls: Zooming via Mouse Wheel
+        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
+            let newZoom = this.cameras.main.zoom - deltaY * 0.001;
+            this.cameras.main.setZoom(Phaser.Math.Clamp(newZoom, 0.3, 2.0));
+        });
+
+        // Controls: Building Placement on Click Release
+        this.input.on('pointerup', (pointer) => {
+            // If it was a drag, don't build
+            if (Phaser.Math.Distance.Between(pointer.downX, pointer.downY, pointer.upX, pointer.upY) > 10) return;
+            if (!window.currentTool) return;
+
+            let worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+            let tileXY = layer.worldToTileXY(worldPoint.x, worldPoint.y);
+
+            if (tileXY.x >= 0 && tileXY.x < MAP_SIZE && tileXY.y >= 0 && tileXY.y < MAP_SIZE) {
+                let key = `${tileXY.x},${tileXY.y}`;
+
+                // Demolition Logic
+                if (window.currentTool === 'demolish') {
+                    if (window.buildings[key]) {
+                        let b = window.buildings[key];
+                        if (b.type === 'house') updateResources(-5, 0);
+                        b.sprite.destroy();
+                        delete window.buildings[key];
+                    }
+                    return;
+                }
+
+                // Check occupancy and terrain rules
+                if (window.buildings[key]) return;
+
+                let tile = layer.getTileAt(tileXY.x, tileXY.y);
+                if (!tile || tile.index === 2) return; // Can't build outside map or on Water (2)
+                if (window.currentTool === 'farm' && tile.index === 3) return; // Farms need Grass (1), not Badland (3)
+
+                // Cost Logic
+                let costs = { house: 10, farm: 50, road: 2 };
+                let cost = costs[window.currentTool];
+                if (window.resources.money < cost) return;
+
+                updateResources(window.currentTool === 'house' ? 5 : 0, -cost);
+
+                // Map grid coordinates to Isometric world space for building sprites
+                let isoX = (tileXY.x - tileXY.y) * 32;
+                let isoY = (tileXY.x + tileXY.y) * 16;
+
+                let sprite = this.add.image(isoX, isoY + 16, window.currentTool);
+                sprite.setOrigin(0.5, 1); // Aligns bottom-center of graphic perfectly to the center of the tile
+                sprite.setDepth(tileXY.x + tileXY.y + 10); // Standard Z-sorting formula for isometric graphics
+
+                window.buildings[key] = { sprite: sprite, type: window.currentTool };
+            }
+        });
+
+        // Taxes Game Loop (Gain drachma based on population every 5 seconds)
+        this.time.addEvent({
+            delay: 5000,
+            callback: () => {
+                if (window.resources.pop > 0) {
+                    let taxes = Math.floor(window.resources.pop * 0.5);
+                    updateResources(0, taxes);
+
+                    // Floating Tax Text UI
+                    let cx = this.cameras.main.scrollX + this.cameras.main.width / 2;
+                    let cy = this.cameras.main.scrollY + this.cameras.main.height / 2;
+
+                    let txt = this.add.text(cx, cy - 50, `+${taxes} 💰 Taxes!`, {
+                        fontSize: '28px',
+                        color: '#FFD700',
+                        fontStyle: 'bold',
+                        stroke: '#000',
+                        strokeThickness: 5
+                    }).setOrigin(0.5);
+
+                    this.tweens.add({
+                        targets: txt,
+                        y: cy - 150,
+                        alpha: 0,
+                        duration: 2500,
+                        onComplete: () => txt.destroy()
+                    });
+                }
+            },
+            loop: true
+        });
+    }
+</script>
+</body>
+</html>

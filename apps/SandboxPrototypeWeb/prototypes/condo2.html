@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serene Heights Condo Management</title>
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        /* Absolute minimal CSS necessary for print receipts */
+        @media print {
+            body * { visibility: hidden; }
+            #printableReceipt, #printableReceipt * { visibility: visible; }
+            #printableReceipt { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 20px; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<!-- Top Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+    <div class="container-fluid px-3">
+        <button class="btn btn-outline-light d-lg-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarOffcanvas">
+            <i class="bi bi-list fs-5"></i>
+        </button>
+        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="#">
+            <i class="bi bi-buildings-fill text-primary"></i>
+            <span>Serene Heights</span>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill fs-7 d-none d-sm-inline" data-i18n="badge_juristic">Juristic Portal</span>
+        </a>
+
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            <!-- Language Switcher -->
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-sm btn-outline-light active" id="btnLangEn" onclick="switchLanguage('en')">EN</button>
+                <button type="button" class="btn btn-sm btn-outline-light" id="btnLangTh" onclick="switchLanguage('th')">ไทย</button>
+            </div>
+
+            <!-- Quick Reset Data Button -->
+            <button class="btn btn-sm btn-outline-secondary text-light ms-1" onclick="resetDemoData()" title="Reset Demo Data" data-i18n-title="btn_reset_data">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid">
+    <div class="row">
+        <!-- Desktop Sidebar -->
+        <aside class="col-lg-2 d-none d-lg-block bg-white border-end min-vh-100 py-3 p-2">
+            <div id="desktopNavLinks" class="nav nav-pills flex-column gap-1">
+                <!-- Populated by JS -->
+            </div>
+        </aside>
+
+        <!-- Mobile Sidebar Offcanvas -->
+        <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarOffcanvas">
+            <div class="offcanvas-header bg-dark text-white">
+                <h5 class="offcanvas-title d-flex align-items-center gap-2">
+                    <i class="bi bi-buildings-fill text-primary"></i> Serene Heights
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+            </div>
+            <div class="offcanvas-body p-2">
+                <div id="mobileNavLinks" class="nav nav-pills flex-column gap-1">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <main class="col-12 col-lg-10 p-3 p-md-4">
+            <!-- Live Toast Notification Container -->
+            <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+                <div id="appToast" class="toast align-items-center text-bg-success border-0 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body" id="toastMessage">Success</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic View Sections -->
+            <div id="view-dashboard" class="view-section"></div>
+            <div id="view-parcels" class="view-section d-none"></div>
+            <div id="view-repairs" class="view-section d-none"></div>
+            <div id="view-bookings" class="view-section d-none"></div>
+            <div id="view-billing" class="view-section d-none"></div>
+            <div id="view-visitors" class="view-section d-none"></div>
+            <div id="view-units" class="view-section d-none"></div>
+            <div id="view-announcements" class="view-section d-none"></div>
+        </main>
+    </div>
+</div>
+
+<!-- Universal Modal Mount -->
+<div class="modal fade" id="actionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" id="actionModalContent">
+            <!-- Rendered dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Receipt Printable Modal -->
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" id="receiptModalContent">
+            <!-- Rendered dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap 5.3 Bundle JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Application Logic -->
+<script>
+    // --- Internationalization (i18n) Dictionary ---
+    const i18n = {
+        en: {
+            badge_juristic: "Juristic Office",
+            btn_reset_data: "Reset Demo Data",
+            nav_dashboard: "Dashboard",
+            nav_parcels: "Parcels",
+            nav_repairs: "Repairs & Work Orders",
+            nav_bookings: "Facility Booking",
+            nav_billing: "Billing & Invoices",
+            nav_visitors: "Visitor Log",
+            nav_units: "Units & Residents",
+            nav_announcements: "Announcements",
+
+            // Stat titles
+            stat_occupancy: "Unit Occupancy",
+            stat_pending_parcels: "Pending Parcels",
+            stat_open_repairs: "Open Repairs",
+            stat_unpaid_bills: "Unpaid Balance",
+
+            // Buttons & generic actions
+            btn_new_parcel: "Log Incoming Parcel",
+            btn_new_repair: "Report Issue",
+            btn_new_booking: "Book Facility",
+            btn_new_bill: "Generate Invoice",
+            btn_checkin_visitor: "Check-in Visitor",
+            btn_new_announcement: "Post Notice",
+            btn_add_unit: "Add / Update Unit",
+            btn_mark_picked: "Pick Up",
+            btn_view_receipt: "Receipt",
+            btn_pay_now: "Record Payment",
+            btn_checkout: "Check Out",
+            btn_cancel: "Cancel",
+            btn_save: "Save",
+            btn_print: "Print Receipt",
+            btn_close: "Close",
+
+            // Table headers
+            th_unit: "Unit",
+            th_recipient: "Resident / Recipient",
+            th_carrier: "Carrier / Code",
+            th_status: "Status",
+            th_date: "Date & Time",
+            th_action: "Action",
+            th_category: "Category",
+            th_title: "Title / Issue",
+            th_priority: "Priority",
+            th_facility: "Facility",
+            th_time: "Time Slot",
+            th_guests: "Guests",
+            th_amount: "Amount",
+            th_due_date: "Due Date",
+            th_visitor: "Visitor Name",
+            th_plate: "License Plate",
+            th_purpose: "Purpose",
+
+            // Status labels
+            status_pending: "Awaiting Pick-up",
+            status_collected: "Picked Up",
+            status_open: "Open",
+            status_in_progress: "In Progress",
+            status_resolved: "Resolved",
+            status_unpaid: "Unpaid",
+            status_paid: "Paid",
+            status_active: "Inside Building",
+            status_departed: "Checked Out",
+            status_occupied: "Occupied",
+            status_vacant: "Vacant",
+
+            // Notification messages
+            msg_parcel_added: "Parcel logged successfully.",
+            msg_parcel_collected: "Parcel picked up by resident.",
+            msg_repair_added: "Repair ticket submitted.",
+            msg_repair_updated: "Repair ticket status updated.",
+            msg_booking_added: "Amenity slot reserved.",
+            msg_booking_cancelled: "Booking cancelled.",
+            msg_bill_added: "Invoice generated successfully.",
+            msg_bill_paid: "Payment recorded successfully.",
+            msg_visitor_checked_in: "Visitor pass issued.",
+            msg_visitor_checked_out: "Visitor checked out.",
+            msg_announcement_added: "Notice published.",
+            msg_unit_saved: "Unit details updated.",
+            msg_data_reset: "Demo data restored to defaults."
+        },
+        th: {
+            badge_juristic: "สำนักงานนิติบุคคล",
+            btn_reset_data: "รีเซ็ตข้อมูลตัวอย่าง",
+            nav_dashboard: "แดชบอร์ดสรุปผล",
+            nav_parcels: "จัดการพัสดุ",
+            nav_repairs: "แจ้งซ่อม / ช่างบริการ",
+            nav_bookings: "จองพื้นที่ส่วนกลาง",
+            nav_billing: "ใบแจ้งหนี้ / บิลค่าใช้จ่าย",
+            nav_visitors: "ผู้มาติดต่อ / รถเข้าออก",
+            nav_units: "ห้องชุดและลูกบ้าน",
+            nav_announcements: "ประกาศข่าวสาร",
+
+            stat_occupancy: "อัตราการพักอาศัย",
+            stat_pending_parcels: "พัสดุรอรับ",
+            stat_open_repairs: "งานซ่อมรอดำเนินการ",
+            stat_unpaid_bills: "ยอดรอชำระทั้งหมด",
+
+            btn_new_parcel: "ลงทะเบียนรับพัสดุ",
+            btn_new_repair: "แจ้งซ่อมใหม่",
+            btn_new_booking: "จองพื้นที่ส่วนกลาง",
+            btn_new_bill: "ออกใบแจ้งหนี้",
+            btn_checkin_visitor: "ลงทะเบียนผู้มาติดต่อ",
+            btn_new_announcement: "สร้างประกาศใหม่",
+            btn_add_unit: "เพิ่ม/แก้ไขข้อมูลยูนิต",
+            btn_mark_picked: "รับพัสดุแล้ว",
+            btn_view_receipt: "ใบเสร็จ",
+            btn_pay_now: "บันทึกการชำระ",
+            btn_checkout: "ลงชื่อออก",
+            btn_cancel: "ยกเลิก",
+            btn_save: "บันทึกข้อมูล",
+            btn_print: "พิมพ์ใบเสร็จ",
+            btn_close: "ปิด",
+
+            th_unit: "ห้องชุด",
+            th_recipient: "ผู้รับ / ลูกบ้าน",
+            th_carrier: "ผู้ให้บริการ / รหัสพัสดุ",
+            th_status: "สถานะ",
+            th_date: "วัน-เวลา",
+            th_action: "จัดการ",
+            th_category: "ประเภท",
+            th_title: "รายการ / หัวข้อ",
+            th_priority: "ความสำคัญ",
+            th_facility: "สิ่งอำนวยความสะดวก",
+            th_time: "ช่วงเวลา",
+            th_guests: "จำนวนคน",
+            th_amount: "ยอดเงิน",
+            th_due_date: "กำหนดชำระ",
+            th_visitor: "ชื่อผู้ติดต่อ",
+            th_plate: "ทะเบียนรถ",
+            th_purpose: "วัตถุประสงค์",
+
+            status_pending: "รอรับของ",
+            status_collected: "รับแล้ว",
+            status_open: "รอดำเนินการ",
+            status_in_progress: "กำลังซ่อมแซม",
+            status_resolved: "ซ่อมเสร็จสิ้น",
+            status_unpaid: "รอชำระ",
+            status_paid: "ชำระแล้ว",
+            status_active: "อยู่ในอาคาร",
+            status_departed: "ออกจากอาคารแล้ว",
+            status_occupied: "มีผู้พักอาศัย",
+            status_vacant: "ห้องว่าง",
+
+            msg_parcel_added: "ลงทะเบียนพัสดุเรียบร้อยแล้ว",
+            msg_parcel_collected: "ลูกบ้านรับพัสดุเรียบร้อย",
+            msg_repair_added: "บันทึกรายการแจ้งซ่อมแล้ว",
+            msg_repair_updated: "อัปเดตสถานะงานซ่อมเรียบร้อย",
+            msg_booking_added: "จองพื้นที่ส่วนกลางเรียบร้อย",
+            msg_booking_cancelled: "ยกเลิกการจองเรียบร้อย",
+            msg_bill_added: "ออกใบแจ้งหนี้เรียบร้อยแล้ว",
+            msg_bill_paid: "บันทึกการรับชำระเงินเรียบร้อย",
+            msg_visitor_checked_in: "บันทึกผู้มาติดต่อเรียบร้อย",
+            msg_visitor_checked_out: "ลงเวลาผู้ติดต่อออกจากอาคารแล้ว",
+            msg_announcement_added: "โพสต์ประกาศสำเร็จ",
+            msg_unit_saved: "บันทึกข้อมูลห้องชุดแล้ว",
+            msg_data_reset: "รีเซ็ตข้อมูลตัวอย่างกลับเป็นค่าเริ่มต้นเรียบร้อย"
+        }
+    };
+
+    let currentLang = localStorage.getItem('condo_lang') || 'en';
+    let currentView = 'dashboard';
+
+    // Helper for translating
+    function t(key) {
+        return (i18n[currentLang] && i18n[currentLang][key]) || key;
+    }
+
+    // Default Seed Data
+    const defaultData = {
+        units: [
+            { unit: "101", floor: 1, resident: "Somchai Prasert", phone: "081-234-5678", status: "occupied", type: "1 Bedroom (35 sqm)" },
+            { unit: "102", floor: 1, resident: "Emily Watson", phone: "089-987-6543", status: "occupied", type: "2 Bedroom (65 sqm)" },
+            { unit: "201", floor: 2, resident: "Niran Chantho", phone: "084-555-1212", status: "occupied", type: "Studio (28 sqm)" },
+            { unit: "202", floor: 2, resident: "Vacant Unit", phone: "-", status: "vacant", type: "1 Bedroom (35 sqm)" },
+            { unit: "301", floor: 3, resident: "Thanakorn S.", phone: "082-333-4444", status: "occupied", type: "Penthouse (110 sqm)" },
+            { unit: "302", floor: 3, resident: "David Miller", phone: "090-444-7777", status: "occupied", type: "1 Bedroom (35 sqm)" }
+        ],
+        parcels: [
+            { id: "P101", unit: "301", recipient: "Thanakorn S.", carrier: "Flash Express", tracking: "TH01928372", date: "2026-10-01 09:30", status: "pending" },
+            { id: "P102", unit: "102", recipient: "Emily Watson", carrier: "Shopee Xpress", tracking: "SPX9988772", date: "2026-10-01 11:15", status: "pending" },
+            { id: "P103", unit: "101", recipient: "Somchai P.", carrier: "Kerry Express", tracking: "KEX8374921", date: "2026-09-30 14:00", status: "collected", collectedAt: "2026-09-30 18:20" }
+        ],
+        repairs: [
+            { id: "R-101", unit: "201", category: "Air Conditioning", title: "Water dripping from bedroom AC", priority: "High", status: "in_progress", tech: "K. Prasit (HVAC)", date: "2026-10-01" },
+            { id: "R-102", unit: "102", category: "Plumbing", title: "Bathroom sink faucet slow drain", priority: "Medium", status: "open", tech: "Unassigned", date: "2026-10-01" },
+            { id: "R-103", unit: "301", category: "Electrical", title: "Balcony light not turning on", priority: "Low", status: "resolved", tech: "K. Sombat", date: "2026-09-28" }
+        ],
+        bookings: [
+            { id: "B-501", facility: "Sky Lounge & Meeting", unit: "301", resident: "Thanakorn S.", date: "2026-10-02", time: "18:00 - 20:00", guests: 4 },
+            { id: "B-502", facility: "Swimming Pool Cabana", unit: "101", resident: "Somchai P.", date: "2026-10-03", time: "14:00 - 16:00", guests: 2 }
+        ],
+        billing: [
+            { id: "INV-2026-101", unit: "101", type: "Common Fee (Oct 2026)", amount: 2100, dueDate: "2026-10-15", status: "unpaid", paidDate: null },
+            { id: "INV-2026-102", unit: "102", type: "Common Fee + Water (Oct 2026)", amount: 3950, dueDate: "2026-10-15", status: "paid", paidDate: "2026-10-01 10:25" },
+            { id: "INV-2026-201", unit: "201", type: "Common Fee (Oct 2026)", amount: 1680, dueDate: "2026-10-15", status: "unpaid", paidDate: null },
+            { id: "INV-2026-301", unit: "301", type: "Common Fee + Parking Card", amount: 6800, dueDate: "2026-10-15", status: "paid", paidDate: "2026-09-29 16:40" }
+        ],
+        visitors: [
+            { id: "V-901", name: "Grab Food Courier", plate: "1กข-9922 กทม", unit: "201", purpose: "Delivery", inTime: "2026-10-01 14:10", outTime: "-", status: "active" },
+            { id: "V-902", name: "K. Wichai (Interior Contractor)", plate: "5ฮภ-1140 กทม", unit: "102", purpose: "Renovation quote", inTime: "2026-10-01 09:30", outTime: "2026-10-01 12:45", status: "departed" }
+        ],
+        announcements: [
+            { id: "A-1", title: "Annual Fire Alarm & System Inspection", content: "The juristic office will test fire alarms on Saturday, Oct 10, 10:00 - 15:00. Please do not panic.", date: "2026-09-28", author: "Condo Management" },
+            { id: "A-2", title: "Rooftop Swimming Pool Deep Cleaning", content: "The pool will be closed for quarterly chemical treatment and scrub on Oct 5 all day.", date: "2026-09-25", author: "Building Engineer" }
+        ]
+    };
+
+    // State initialization
+    let db = JSON.parse(localStorage.getItem('serene_condo_db')) || defaultData;
+
+    function saveDB() {
+        localStorage.setItem('serene_condo_db', JSON.stringify(db));
+    }
+
+    function resetDemoData() {
+        if (confirm(currentLang === 'en' ? "Reset all demo data back to default?" : "ยืนยันการคืนค่าข้อมูลเริ่มต้นทั้งหมดหรือไม่?")) {
+            db = JSON.parse(JSON.stringify(defaultData));
+            saveDB();
+            renderCurrentView();
+            showToast(t('msg_data_reset'));
+        }
+    }
+
+    // Toast Notification helper
+    function showToast(msg) {
+        const toastEl = document.getElementById('appToast');
+        document.getElementById('toastMessage').innerText = msg;
+        const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+        toast.show();
+    }
+
+    // Modal Helper
+    let actionModalInstance = null;
+    function openActionModal(title, bodyHtml, footerHtml = '') {
+        const modalEl = document.getElementById('actionModal');
+        const content = document.getElementById('actionModalContent');
+        content.innerHTML = `
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold">${title}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">${bodyHtml}</div>
+        ${footerHtml ? `<div class="modal-footer">${footerHtml}</div>` : ''}
+      `;
+        if (!actionModalInstance) {
+            actionModalInstance = new bootstrap.Modal(modalEl);
+        }
+        actionModalInstance.show();
+    }
+
+    function closeActionModal() {
+        if (actionModalInstance) {
+            actionModalInstance.hide();
+        }
+    }
+
+    // --- Navigation Definition ---
+    const navItems = [
+        { id: 'dashboard', icon: 'bi-speedometer2', labelKey: 'nav_dashboard' },
+        { id: 'parcels', icon: 'bi-box-seam-fill', labelKey: 'nav_parcels', countKey: 'parcels' },
+        { id: 'repairs', icon: 'bi-tools', labelKey: 'nav_repairs', countKey: 'repairs' },
+        { id: 'bookings', icon: 'bi-calendar-check-fill', labelKey: 'nav_bookings' },
+        { id: 'billing', icon: 'bi-receipt-cutoff', labelKey: 'nav_billing', countKey: 'billing' },
+        { id: 'visitors', icon: 'bi-person-badge-fill', labelKey: 'nav_visitors' },
+        { id: 'units', icon: 'bi-door-open-fill', labelKey: 'nav_units' },
+        { id: 'announcements', icon: 'bi-megaphone-fill', labelKey: 'nav_announcements' }
+    ];
+
+    function buildSidebar() {
+        const pendingParcels = db.parcels.filter(p => p.status === 'pending').length;
+        const openRepairs = db.repairs.filter(r => r.status !== 'resolved').length;
+        const unpaidBills = db.billing.filter(b => b.status === 'unpaid').length;
+
+        function renderNavHTML() {
+            return navItems.map(item => {
+                let badgeHTML = '';
+                if (item.countKey === 'parcels' && pendingParcels > 0) {
+                    badgeHTML = `<span class="badge bg-warning text-dark ms-auto rounded-pill">${pendingParcels}</span>`;
+                } else if (item.countKey === 'repairs' && openRepairs > 0) {
+                    badgeHTML = `<span class="badge bg-danger ms-auto rounded-pill">${openRepairs}</span>`;
+                } else if (item.countKey === 'billing' && unpaidBills > 0) {
+                    badgeHTML = `<span class="badge bg-info text-dark ms-auto rounded-pill">${unpaidBills}</span>`;
+                }
+
+                const isActive = currentView === item.id ? 'active' : 'text-dark';
+                return `
+            <a href="javascript:void(0)" onclick="navigateTo('${item.id}')" class="nav-link ${isActive} d-flex align-items-center gap-2 py-2">
+              <i class="bi ${item.icon} fs-5"></i>
+              <span>${t(item.labelKey)}</span>
+              ${badgeHTML}
+            </a>
+          `;
+            }).join('');
+        }
+
+        document.getElementById('desktopNavLinks').innerHTML = renderNavHTML();
+        document.getElementById('mobileNavLinks').innerHTML = renderNavHTML();
+    }
+
+    function navigateTo(viewId) {
+        currentView = viewId;
+        document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+        const activeEl = document.getElementById(`view-${viewId}`);
+        if (activeEl) activeEl.classList.remove('d-none');
+        buildSidebar();
+
+        // Close mobile offcanvas if open
+        const offcanvasEl = document.getElementById('sidebarOffcanvas');
+        const bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+        if (bsOffcanvas) bsOffcanvas.hide();
+
+        renderCurrentView();
+    }
+
+    function switchLanguage(lang) {
+        currentLang = lang;
+        localStorage.setItem('condo_lang', lang);
+        document.getElementById('btnLangEn').classList.toggle('active', lang === 'en');
+        document.getElementById('btnLangTh').classList.toggle('active', lang === 'th');
+
+        // Update static navbar badges/titles
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            el.innerText = t(key);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            const key = el.getAttribute('data-i18n-title');
+            el.setAttribute('title', t(key));
+        });
+
+        buildSidebar();
+        renderCurrentView();
+    }
+
+    // --- View Renderers ---
+    function renderCurrentView() {
+        switch (currentView) {
+            case 'dashboard': renderDashboard(); break;
+            case 'parcels': renderParcels(); break;
+            case 'repairs': renderRepairs(); break;
+            case 'bookings': renderBookings(); break;
+            case 'billing': renderBilling(); break;
+            case 'visitors': renderVisitors(); break;
+            case 'units': renderUnits(); break;
+            case 'announcements': renderAnnouncements(); break;
+        }
+    }
+
+    // 1. DASHBOARD
+    function renderDashboard() {
+        const occupiedUnits = db.units.filter(u => u.status === 'occupied').length;
+        const totalUnits = db.units.length;
+        const occupancyRate = Math.round((occupiedUnits / totalUnits) * 100);
+        const pendingParcels = db.parcels.filter(p => p.status === 'pending').length;
+        const openRepairs = db.repairs.filter(r => r.status !== 'resolved').length;
+        const unpaidAmount = db.billing.filter(b => b.status === 'unpaid').reduce((sum, b) => sum + b.amount, 0);
+
+        document.getElementById('view-dashboard').innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_dashboard')}</h3>
+            <p class="text-secondary small mb-0">Overview of Serene Heights Condominium</p>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" onclick="navigateTo('parcels')">
+              <i class="bi bi-box-seam me-1"></i>${t('btn_new_parcel')}
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="openNewRepairModal()">
+              <i class="bi bi-tools me-1"></i>${t('btn_new_repair')}
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 Metric Cards -->
+        <div class="row g-3 mb-4">
+          <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="bg-primary-subtle text-primary p-3 rounded-circle fs-4">
+                  <i class="bi bi-door-closed-fill"></i>
+                </div>
+                <div>
+                  <div class="text-secondary small">${t('stat_occupancy')}</div>
+                  <h4 class="fw-bold mb-0">${occupancyRate}% <small class="fs-7 text-muted">(${occupiedUnits}/${totalUnits})</small></h4>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="bg-warning-subtle text-warning-emphasis p-3 rounded-circle fs-4">
+                  <i class="bi bi-box-seam"></i>
+                </div>
+                <div>
+                  <div class="text-secondary small">${t('stat_pending_parcels')}</div>
+                  <h4 class="fw-bold mb-0">${pendingParcels}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="bg-danger-subtle text-danger p-3 rounded-circle fs-4">
+                  <i class="bi bi-wrench-adjustable-circle"></i>
+                </div>
+                <div>
+                  <div class="text-secondary small">${t('stat_open_repairs')}</div>
+                  <h4 class="fw-bold mb-0">${openRepairs}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body d-flex align-items-center gap-3">
+                <div class="bg-success-subtle text-success p-3 rounded-circle fs-4">
+                  <i class="bi bi-cash-stack"></i>
+                </div>
+                <div>
+                  <div class="text-secondary small">${t('stat_unpaid_bills')}</div>
+                  <h4 class="fw-bold mb-0">฿${unpaidAmount.toLocaleString()}</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <!-- Pending Parcels Snapshot -->
+          <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-3 h-100">
+              <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0"><i class="bi bi-box-seam me-2 text-warning"></i>${t('stat_pending_parcels')}</h6>
+                <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="navigateTo('parcels')">View All &rarr;</button>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>${t('th_unit')}</th>
+                        <th>${t('th_recipient')}</th>
+                        <th>${t('th_carrier')}</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${db.parcels.filter(p => p.status === 'pending').slice(0, 4).map(p => `
+                        <tr>
+                          <td><span class="badge bg-dark-subtle text-dark fw-bold">#${p.unit}</span></td>
+                          <td>${p.recipient}</td>
+                          <td><small class="text-muted">${p.carrier} (${p.tracking})</small></td>
+                          <td class="text-end pe-3">
+                            <button class="btn btn-sm btn-outline-success" onclick="markParcelCollected('${p.id}')">
+                              <i class="bi bi-check-lg"></i> ${t('btn_mark_picked')}
+                            </button>
+                          </td>
+                        </tr>
+                      `).join('') || `<tr><td colspan="4" class="text-center py-4 text-muted">No pending parcels</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Active Maintenance Tickets -->
+          <div class="col-lg-6">
+            <div class="card border-0 shadow-sm rounded-3 h-100">
+              <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0"><i class="bi bi-tools me-2 text-danger"></i>${t('stat_open_repairs')}</h6>
+                <button class="btn btn-sm btn-link p-0 text-decoration-none" onclick="navigateTo('repairs')">View All &rarr;</button>
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>${t('th_unit')}</th>
+                        <th>${t('th_title')}</th>
+                        <th>${t('th_priority')}</th>
+                        <th>${t('th_status')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${db.repairs.filter(r => r.status !== 'resolved').slice(0, 4).map(r => `
+                        <tr>
+                          <td><span class="badge bg-dark-subtle text-dark fw-bold">#${r.unit}</span></td>
+                          <td><div class="fw-medium">${r.title}</div><small class="text-muted">${r.category}</small></td>
+                          <td><span class="badge ${r.priority === 'High' ? 'bg-danger' : 'bg-warning text-dark'}">${r.priority}</span></td>
+                          <td><span class="badge ${r.status === 'open' ? 'bg-secondary' : 'bg-primary'}">${t('status_' + r.status)}</span></td>
+                        </tr>
+                      `).join('') || `<tr><td colspan="4" class="text-center py-4 text-muted">No pending repairs</td></tr>`}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2. PARCELS VIEW
+    function renderParcels() {
+        const container = document.getElementById('view-parcels');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_parcels')}</h3>
+            <p class="text-secondary small mb-0">Front desk parcel intake & recipient delivery log</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewParcelModal()">
+            <i class="bi bi-plus-lg me-1"></i> ${t('btn_new_parcel')}
+          </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>${t('th_unit')}</th>
+                    <th>${t('th_recipient')}</th>
+                    <th>${t('th_carrier')}</th>
+                    <th>${t('th_date')}</th>
+                    <th>${t('th_status')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.parcels.map(p => `
+                    <tr>
+                      <td><span class="badge bg-dark text-white fw-bold">#${p.unit}</span></td>
+                      <td class="fw-semibold">${p.recipient}</td>
+                      <td>
+                        <div>${p.carrier}</div>
+                        <small class="text-muted font-monospace">${p.tracking}</small>
+                      </td>
+                      <td><small class="text-muted">${p.date}</small></td>
+                      <td>
+                        <span class="badge ${p.status === 'pending' ? 'bg-warning text-dark' : 'bg-success'}">
+                          ${t('status_' + p.status)}
+                        </span>
+                        ${p.collectedAt ? `<div class="small text-muted">${p.collectedAt}</div>` : ''}
+                      </td>
+                      <td class="text-end pe-3">
+                        ${p.status === 'pending' ? `
+                          <button class="btn btn-sm btn-success" onclick="markParcelCollected('${p.id}')">
+                            <i class="bi bi-check2-circle me-1"></i>${t('btn_mark_picked')}
+                          </button>
+                        ` : `<span class="text-muted small"><i class="bi bi-check-all text-success me-1"></i>Done</span>`}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openNewParcelModal() {
+        const unitsOptions = db.units.map(u => `<option value="${u.unit}" data-resident="${u.resident}">${u.unit} - ${u.resident}</option>`).join('');
+        const body = `
+        <form id="parcelForm">
+          <div class="mb-3">
+            <label class="form-label">${t('th_unit')}</label>
+            <select class="form-select" id="parcelUnit" required onchange="autoFillResident(this)">
+              <option value="" disabled selected>Select unit...</option>
+              ${unitsOptions}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_recipient')}</label>
+            <input type="text" class="form-control" id="parcelRecipient" required placeholder="Resident name">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_carrier')}</label>
+              <select class="form-select" id="parcelCarrier" required>
+                <option>Flash Express</option>
+                <option>Kerry Express</option>
+                <option>Shopee Xpress</option>
+                <option>Lazada Express</option>
+                <option>Thailand Post (EMS)</option>
+                <option>Grab / Lineman</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Tracking Number</label>
+              <input type="text" class="form-control" id="parcelTracking" required placeholder="e.g. TH0182746">
+            </div>
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitParcel()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_new_parcel'), body, footer);
+    }
+
+    function autoFillResident(selectEl) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        const resident = opt.getAttribute('data-resident');
+        if (resident && resident !== "Vacant Unit") {
+            document.getElementById('parcelRecipient').value = resident;
+        }
+    }
+
+    function submitParcel() {
+        const unit = document.getElementById('parcelUnit').value;
+        const recipient = document.getElementById('parcelRecipient').value;
+        const carrier = document.getElementById('parcelCarrier').value;
+        const tracking = document.getElementById('parcelTracking').value;
+
+        if (!unit || !recipient || !tracking) {
+            alert("Please complete all required fields");
+            return;
+        }
+
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+
+        db.parcels.unshift({
+            id: "P-" + Date.now().toString().slice(-4),
+            unit, recipient, carrier, tracking,
+            date: dateStr,
+            status: "pending"
+        });
+
+        saveDB();
+        closeActionModal();
+        buildSidebar();
+        renderParcels();
+        showToast(t('msg_parcel_added'));
+    }
+
+    function markParcelCollected(id) {
+        const p = db.parcels.find(x => x.id === id);
+        if (p) {
+            const now = new Date();
+            p.status = 'collected';
+            p.collectedAt = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+            saveDB();
+            buildSidebar();
+            renderParcels();
+            showToast(t('msg_parcel_collected'));
+        }
+    }
+
+    // 3. REPAIRS & WORK ORDERS
+    function renderRepairs() {
+        const container = document.getElementById('view-repairs');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_repairs')}</h3>
+            <p class="text-secondary small mb-0">Track maintenance tickets and technician dispatches</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewRepairModal()">
+            <i class="bi bi-plus-lg me-1"></i> ${t('btn_new_repair')}
+          </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>${t('th_unit')}</th>
+                    <th>${t('th_title')}</th>
+                    <th>${t('th_priority')}</th>
+                    <th>Technician</th>
+                    <th>${t('th_status')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.repairs.map(r => `
+                    <tr>
+                      <td><span class="badge bg-dark text-white fw-bold">#${r.unit}</span></td>
+                      <td>
+                        <div class="fw-bold">${r.title}</div>
+                        <small class="text-muted"><i class="bi bi-tag me-1"></i>${r.category} &bull; ${r.date}</small>
+                      </td>
+                      <td>
+                        <span class="badge ${r.priority === 'High' ? 'bg-danger' : r.priority === 'Medium' ? 'bg-warning text-dark' : 'bg-secondary'}">
+                          ${r.priority}
+                        </span>
+                      </td>
+                      <td><span class="small text-secondary"><i class="bi bi-person me-1"></i>${r.tech || 'Unassigned'}</span></td>
+                      <td>
+                        <span class="badge ${r.status === 'open' ? 'bg-secondary' : r.status === 'in_progress' ? 'bg-primary' : 'bg-success'}">
+                          ${t('status_' + r.status)}
+                        </span>
+                      </td>
+                      <td class="text-end pe-3">
+                        <button class="btn btn-sm btn-outline-primary" onclick="openUpdateRepairModal('${r.id}')">
+                          <i class="bi bi-pencil-square me-1"></i>Update
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openNewRepairModal() {
+        const unitsOptions = db.units.map(u => `<option value="${u.unit}">Unit ${u.unit}</option>`).join('');
+        const body = `
+        <form id="repairForm">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_unit')}</label>
+              <select class="form-select" id="repairUnit" required>${unitsOptions}</select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_category')}</label>
+              <select class="form-select" id="repairCat">
+                <option>Air Conditioning</option>
+                <option>Plumbing & Water</option>
+                <option>Electrical</option>
+                <option>Doors & Windows</option>
+                <option>Sanitary & Odor</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_title')}</label>
+            <input type="text" class="form-control" id="repairTitle" required placeholder="e.g. Master bedroom AC is leaking water">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_priority')}</label>
+              <select class="form-select" id="repairPriority">
+                <option value="Low">Low</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="High">High (Urgent)</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Assign Technician</label>
+              <input type="text" class="form-control" id="repairTech" placeholder="e.g. K. Prasit (Staff)">
+            </div>
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitRepair()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_new_repair'), body, footer);
+    }
+
+    function submitRepair() {
+        const unit = document.getElementById('repairUnit').value;
+        const category = document.getElementById('repairCat').value;
+        const title = document.getElementById('repairTitle').value;
+        const priority = document.getElementById('repairPriority').value;
+        const tech = document.getElementById('repairTech').value || 'Unassigned';
+
+        if (!title) {
+            alert("Please enter the repair title");
+            return;
+        }
+
+        db.repairs.unshift({
+            id: "R-" + Date.now().toString().slice(-3),
+            unit, category, title, priority, tech,
+            status: 'open',
+            date: new Date().toISOString().slice(0, 10)
+        });
+
+        saveDB();
+        closeActionModal();
+        buildSidebar();
+        renderRepairs();
+        showToast(t('msg_repair_added'));
+    }
+
+    function openUpdateRepairModal(id) {
+        const r = db.repairs.find(x => x.id === id);
+        if (!r) return;
+
+        const body = `
+        <div class="mb-3">
+          <label class="form-label fw-bold">Unit #${r.unit} - ${r.title}</label>
+          <div class="text-muted small">${r.category}</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">${t('th_status')}</label>
+          <select class="form-select" id="updateRepairStatus">
+            <option value="open" ${r.status === 'open' ? 'selected' : ''}>${t('status_open')}</option>
+            <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>${t('status_in_progress')}</option>
+            <option value="resolved" ${r.status === 'resolved' ? 'selected' : ''}>${t('status_resolved')}</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Assigned Technician</label>
+          <input type="text" class="form-control" id="updateRepairTech" value="${r.tech || ''}">
+        </div>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitUpdateRepair('${r.id}')">${t('btn_save')}</button>
+      `;
+        openActionModal("Update Work Order", body, footer);
+    }
+
+    function submitUpdateRepair(id) {
+        const r = db.repairs.find(x => x.id === id);
+        if (r) {
+            r.status = document.getElementById('updateRepairStatus').value;
+            r.tech = document.getElementById('updateRepairTech').value;
+            saveDB();
+            closeActionModal();
+            buildSidebar();
+            renderRepairs();
+            showToast(t('msg_repair_updated'));
+        }
+    }
+
+    // 4. FACILITY BOOKING
+    function renderBookings() {
+        const container = document.getElementById('view-bookings');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_bookings')}</h3>
+            <p class="text-secondary small mb-0">Reserve common amenities, sky lounge, and fitness facilities</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewBookingModal()">
+            <i class="bi bi-calendar-plus me-1"></i> ${t('btn_new_booking')}
+          </button>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-water text-primary fs-4"></i>
+                  <h6 class="fw-bold mb-0">Sky Pool & Cabana</h6>
+                </div>
+                <p class="small text-secondary mb-1">Floor 32 &bull; 06:00 - 22:00</p>
+                <span class="badge bg-success-subtle text-success">Open</span>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-heart-pulse-fill text-danger fs-4"></i>
+                  <h6 class="fw-bold mb-0">Fitness Studio</h6>
+                </div>
+                <p class="small text-secondary mb-1">Floor 32 &bull; 24 Hours</p>
+                <span class="badge bg-success-subtle text-success">Open</span>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-3">
+              <div class="card-body">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="bi bi-people-fill text-info fs-4"></i>
+                  <h6 class="fw-bold mb-0">Meeting & Co-working</h6>
+                </div>
+                <p class="small text-secondary mb-1">Floor 5 &bull; 08:00 - 22:00</p>
+                <span class="badge bg-success-subtle text-success">Open</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>${t('th_facility')}</th>
+                    <th>${t('th_unit')}</th>
+                    <th>${t('th_date')}</th>
+                    <th>${t('th_time')}</th>
+                    <th>${t('th_guests')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.bookings.map(b => `
+                    <tr>
+                      <td class="fw-bold text-primary"><i class="bi bi-geo-alt me-1"></i>${b.facility}</td>
+                      <td>
+                        <span class="badge bg-dark-subtle text-dark">#${b.unit}</span>
+                        <span class="small text-muted ms-1">${b.resident}</span>
+                      </td>
+                      <td>${b.date}</td>
+                      <td><span class="badge bg-light text-dark border">${b.time}</span></td>
+                      <td>${b.guests} persons</td>
+                      <td class="text-end pe-3">
+                        <button class="btn btn-sm btn-outline-danger" onclick="cancelBooking('${b.id}')">
+                          <i class="bi bi-x-circle me-1"></i>${t('btn_cancel')}
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('') || `<tr><td colspan="6" class="text-center py-4 text-muted">No reservations scheduled</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openNewBookingModal() {
+        const unitsOptions = db.units.map(u => `<option value="${u.unit}" data-resident="${u.resident}">Unit ${u.unit} (${u.resident})</option>`).join('');
+        const body = `
+        <form id="bookingForm">
+          <div class="mb-3">
+            <label class="form-label">${t('th_facility')}</label>
+            <select class="form-select" id="bookFacility" required>
+              <option>Sky Lounge & Meeting</option>
+              <option>Swimming Pool Cabana</option>
+              <option>BBQ Terrace & Garden</option>
+              <option>Private Cinema Room</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_unit')}</label>
+            <select class="form-select" id="bookUnit" required>${unitsOptions}</select>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_date')}</label>
+              <input type="date" class="form-control" id="bookDate" required value="${new Date().toISOString().slice(0, 10)}">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_time')}</label>
+              <select class="form-select" id="bookTime">
+                <option>09:00 - 11:00</option>
+                <option>11:00 - 13:00</option>
+                <option>14:00 - 16:00</option>
+                <option>16:00 - 18:00</option>
+                <option>18:00 - 20:00</option>
+                <option>20:00 - 22:00</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_guests')}</label>
+            <input type="number" class="form-control" id="bookGuests" min="1" max="20" value="2" required>
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitBooking()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_new_booking'), body, footer);
+    }
+
+    function submitBooking() {
+        const facility = document.getElementById('bookFacility').value;
+        const unitSel = document.getElementById('bookUnit');
+        const unit = unitSel.value;
+        const resident = unitSel.options[unitSel.selectedIndex].getAttribute('data-resident') || "Resident";
+        const date = document.getElementById('bookDate').value;
+        const time = document.getElementById('bookTime').value;
+        const guests = document.getElementById('bookGuests').value;
+
+        if (!date) {
+            alert("Please pick a date");
+            return;
+        }
+
+        db.bookings.unshift({
+            id: "B-" + Date.now().toString().slice(-3),
+            facility, unit, resident, date, time, guests
+        });
+
+        saveDB();
+        closeActionModal();
+        renderBookings();
+        showToast(t('msg_booking_added'));
+    }
+
+    function cancelBooking(id) {
+        if (confirm("Cancel this booking?")) {
+            db.bookings = db.bookings.filter(b => b.id !== id);
+            saveDB();
+            renderBookings();
+            showToast(t('msg_booking_cancelled'));
+        }
+    }
+
+    // 5. BILLING & INVOICES
+    function renderBilling() {
+        const container = document.getElementById('view-billing');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_billing')}</h3>
+            <p class="text-secondary small mb-0">Common fees, utility billing, and official juristic receipts</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewBillModal()">
+            <i class="bi bi-file-earmark-plus me-1"></i> ${t('btn_new_bill')}
+          </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Invoice #</th>
+                    <th>${t('th_unit')}</th>
+                    <th>${t('th_title')}</th>
+                    <th>${t('th_amount')}</th>
+                    <th>${t('th_due_date')}</th>
+                    <th>${t('th_status')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.billing.map(b => `
+                    <tr>
+                      <td class="font-monospace fw-semibold">${b.id}</td>
+                      <td><span class="badge bg-dark-subtle text-dark fw-bold">#${b.unit}</span></td>
+                      <td>${b.type}</td>
+                      <td class="fw-bold">฿${b.amount.toLocaleString()}</td>
+                      <td><small class="text-muted">${b.dueDate}</small></td>
+                      <td>
+                        <span class="badge ${b.status === 'paid' ? 'bg-success' : 'bg-warning text-dark'}">
+                          ${t('status_' + b.status)}
+                        </span>
+                      </td>
+                      <td class="text-end pe-3">
+                        ${b.status === 'unpaid' ? `
+                          <button class="btn btn-sm btn-outline-success" onclick="payBill('${b.id}')">
+                            <i class="bi bi-wallet2 me-1"></i>${t('btn_pay_now')}
+                          </button>
+                        ` : `
+                          <button class="btn btn-sm btn-outline-secondary" onclick="viewReceipt('${b.id}')">
+                            <i class="bi bi-printer me-1"></i>${t('btn_view_receipt')}
+                          </button>
+                        `}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openNewBillModal() {
+        const unitsOptions = db.units.map(u => `<option value="${u.unit}">Unit ${u.unit} (${u.resident})</option>`).join('');
+        const body = `
+        <form id="billForm">
+          <div class="mb-3">
+            <label class="form-label">${t('th_unit')}</label>
+            <select class="form-select" id="billUnit" required>${unitsOptions}</select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_title')}</label>
+            <input type="text" class="form-control" id="billType" required value="Common Area Fee (Nov 2026)">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_amount')} (THB)</label>
+              <input type="number" class="form-control" id="billAmount" required value="2100" min="1">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_due_date')}</label>
+              <input type="date" class="form-control" id="billDueDate" required value="2026-11-15">
+            </div>
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitBill()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_new_bill'), body, footer);
+    }
+
+    function submitBill() {
+        const unit = document.getElementById('billUnit').value;
+        const type = document.getElementById('billType').value;
+        const amount = parseFloat(document.getElementById('billAmount').value);
+        const dueDate = document.getElementById('billDueDate').value;
+
+        if (!type || !amount || !dueDate) {
+            alert("Please fill all invoice parameters");
+            return;
+        }
+
+        db.billing.unshift({
+            id: "INV-2026-" + Math.floor(100 + Math.random() * 900),
+            unit, type, amount, dueDate,
+            status: "unpaid",
+            paidDate: null
+        });
+
+        saveDB();
+        closeActionModal();
+        buildSidebar();
+        renderBilling();
+        showToast(t('msg_bill_added'));
+    }
+
+    function payBill(id) {
+        const b = db.billing.find(x => x.id === id);
+        if (b) {
+            const now = new Date();
+            b.status = 'paid';
+            b.paidDate = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+            saveDB();
+            buildSidebar();
+            renderBilling();
+            showToast(t('msg_bill_paid'));
+        }
+    }
+
+    function viewReceipt(id) {
+        const b = db.billing.find(x => x.id === id);
+        if (!b) return;
+        const u = db.units.find(x => x.unit === b.unit) || { resident: "Resident" };
+
+        const content = document.getElementById('receiptModalContent');
+        content.innerHTML = `
+        <div class="modal-body p-4" id="printableReceipt">
+          <div class="border p-4 rounded bg-white">
+            <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+              <div>
+                <h5 class="fw-bold text-primary mb-1">SERENE HEIGHTS CONDOMINIUM</h5>
+                <p class="text-secondary small mb-0">Juristic Condominium Person Reg. No. 010555912345</p>
+                <p class="text-secondary small mb-0">Sukhumvit Rd., Watthana, Bangkok 10110</p>
+              </div>
+              <div class="text-end">
+                <span class="badge bg-success mb-1">OFFICIAL RECEIPT</span>
+                <div class="small fw-bold">${b.id}</div>
+                <div class="small text-muted">${b.paidDate || 'Paid'}</div>
+              </div>
+            </div>
+
+            <div class="row mb-3 small">
+              <div class="col-6">
+                <div class="text-muted">Billed To:</div>
+                <div class="fw-bold">${u.resident}</div>
+                <div>Unit: #${b.unit}</div>
+              </div>
+              <div class="col-6 text-end">
+                <div class="text-muted">Payment Method:</div>
+                <div class="fw-bold">Bank Transfer / PromptPay</div>
+                <div class="text-success">Verified by Juristic Cashier</div>
+              </div>
+            </div>
+
+            <table class="table table-bordered table-sm mb-3">
+              <thead class="table-light">
+                <tr>
+                  <th>Description</th>
+                  <th class="text-end" style="width: 120px;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>${b.type}</td>
+                  <td class="text-end">฿${b.amount.toLocaleString()}.00</td>
+                </tr>
+                <tr>
+                  <td class="text-end fw-bold">Total Paid</td>
+                  <td class="text-end fw-bold text-success">฿${b.amount.toLocaleString()}.00</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="text-center text-muted small pt-2 border-top">
+              Thank you for keeping your condominium dues current!
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer no-print">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_close')}</button>
+          <button type="button" class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer me-1"></i>${t('btn_print')}</button>
+        </div>
+      `;
+
+        const modal = new bootstrap.Modal(document.getElementById('receiptModal'));
+        modal.show();
+    }
+
+    // 6. VISITOR LOG
+    function renderVisitors() {
+        const container = document.getElementById('view-visitors');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_visitors')}</h3>
+            <p class="text-secondary small mb-0">Security gate check-in, parking permits, and delivery access</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewVisitorModal()">
+            <i class="bi bi-shield-plus me-1"></i> ${t('btn_checkin_visitor')}
+          </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>${t('th_visitor')}</th>
+                    <th>${t('th_plate')}</th>
+                    <th>Visiting Unit</th>
+                    <th>${t('th_purpose')}</th>
+                    <th>Check In</th>
+                    <th>Check Out</th>
+                    <th>${t('th_status')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.visitors.map(v => `
+                    <tr>
+                      <td class="fw-bold">${v.name}</td>
+                      <td><span class="badge bg-light text-dark border font-monospace">${v.plate}</span></td>
+                      <td><span class="badge bg-dark-subtle text-dark">#${v.unit}</span></td>
+                      <td><small class="text-muted">${v.purpose}</small></td>
+                      <td><small>${v.inTime}</small></td>
+                      <td><small class="text-muted">${v.outTime}</small></td>
+                      <td>
+                        <span class="badge ${v.status === 'active' ? 'bg-primary' : 'bg-secondary'}">
+                          ${t('status_' + v.status)}
+                        </span>
+                      </td>
+                      <td class="text-end pe-3">
+                        ${v.status === 'active' ? `
+                          <button class="btn btn-sm btn-outline-danger" onclick="checkoutVisitor('${v.id}')">
+                            <i class="bi bi-box-arrow-right me-1"></i>${t('btn_checkout')}
+                          </button>
+                        ` : `<span class="text-muted small"><i class="bi bi-check-circle me-1 text-success"></i>Left</span>`}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openNewVisitorModal() {
+        const unitsOptions = db.units.map(u => `<option value="${u.unit}">Unit ${u.unit}</option>`).join('');
+        const body = `
+        <form id="visitorForm">
+          <div class="mb-3">
+            <label class="form-label">${t('th_visitor')}</label>
+            <input type="text" class="form-control" id="visName" required placeholder="Full Name / Rider">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_plate')}</label>
+              <input type="text" class="form-control" id="visPlate" required placeholder="e.g. 1กข-9999 กทม">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Visiting Unit</label>
+              <select class="form-select" id="visUnit">${unitsOptions}</select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">${t('th_purpose')}</label>
+            <select class="form-select" id="visPurpose">
+              <option>Food / Parcel Delivery</option>
+              <option>Visiting Resident</option>
+              <option>Contractor / Renovation</option>
+              <option>Real Estate Agent</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitVisitor()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_checkin_visitor'), body, footer);
+    }
+
+    function submitVisitor() {
+        const name = document.getElementById('visName').value;
+        const plate = document.getElementById('visPlate').value;
+        const unit = document.getElementById('visUnit').value;
+        const purpose = document.getElementById('visPurpose').value;
+
+        if (!name || !plate) {
+            alert("Please enter visitor details");
+            return;
+        }
+
+        const now = new Date();
+        const inTime = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+
+        db.visitors.unshift({
+            id: "V-" + Date.now().toString().slice(-3),
+            name, plate, unit, purpose, inTime, outTime: "-",
+            status: "active"
+        });
+
+        saveDB();
+        closeActionModal();
+        renderVisitors();
+        showToast(t('msg_visitor_checked_in'));
+    }
+
+    function checkoutVisitor(id) {
+        const v = db.visitors.find(x => x.id === id);
+        if (v) {
+            const now = new Date();
+            v.status = 'departed';
+            v.outTime = now.toISOString().slice(0, 10) + ' ' + now.toTimeString().slice(0, 5);
+            saveDB();
+            renderVisitors();
+            showToast(t('msg_visitor_checked_out'));
+        }
+    }
+
+    // 7. UNITS & RESIDENTS
+    function renderUnits() {
+        const container = document.getElementById('view-units');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_units')}</h3>
+            <p class="text-secondary small mb-0">Directory of residential units and verified resident contacts</p>
+          </div>
+          <button class="btn btn-primary" onclick="openUnitModal()">
+            <i class="bi bi-building-add me-1"></i> ${t('btn_add_unit')}
+          </button>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-3">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>${t('th_unit')}</th>
+                    <th>Floor</th>
+                    <th>Type</th>
+                    <th>${t('th_recipient')}</th>
+                    <th>Contact Phone</th>
+                    <th>${t('th_status')}</th>
+                    <th class="text-end pe-3">${t('th_action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${db.units.map(u => `
+                    <tr>
+                      <td><span class="badge bg-dark text-white fw-bold">#${u.unit}</span></td>
+                      <td>Floor ${u.floor}</td>
+                      <td><small class="text-muted">${u.type}</small></td>
+                      <td class="fw-bold">${u.resident}</td>
+                      <td>${u.phone}</td>
+                      <td>
+                        <span class="badge ${u.status === 'occupied' ? 'bg-success' : 'bg-secondary'}">
+                          ${t('status_' + u.status)}
+                        </span>
+                      </td>
+                      <td class="text-end pe-3">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="openUnitModal('${u.unit}')">
+                          <i class="bi bi-pencil me-1"></i>Edit
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function openUnitModal(unitNo = null) {
+        const existing = unitNo ? db.units.find(x => x.unit === unitNo) : null;
+        const body = `
+        <form id="unitForm">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_unit')} Number</label>
+              <input type="text" class="form-control" id="uNumber" value="${existing ? existing.unit : ''}" ${existing ? 'readonly' : ''} required placeholder="e.g. 402">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Floor</label>
+              <input type="number" class="form-control" id="uFloor" value="${existing ? existing.floor : '1'}" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Resident Name</label>
+            <input type="text" class="form-control" id="uResident" value="${existing ? existing.resident : ''}" required placeholder="Full Name">
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Contact Phone</label>
+              <input type="text" class="form-control" id="uPhone" value="${existing ? existing.phone : ''}" placeholder="08x-xxx-xxxx">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">${t('th_status')}</label>
+              <select class="form-select" id="uStatus">
+                <option value="occupied" ${existing && existing.status === 'occupied' ? 'selected' : ''}>${t('status_occupied')}</option>
+                <option value="vacant" ${existing && existing.status === 'vacant' ? 'selected' : ''}>${t('status_vacant')}</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Unit Layout / Specs</label>
+            <input type="text" class="form-control" id="uType" value="${existing ? existing.type : '1 Bedroom (35 sqm)'}">
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitUnit('${unitNo || ''}')">${t('btn_save')}</button>
+      `;
+        openActionModal(existing ? "Edit Unit Details" : "Add New Unit", body, footer);
+    }
+
+    function submitUnit(editingUnitNo) {
+        const unit = document.getElementById('uNumber').value;
+        const floor = parseInt(document.getElementById('uFloor').value);
+        const resident = document.getElementById('uResident').value;
+        const phone = document.getElementById('uPhone').value || '-';
+        const status = document.getElementById('uStatus').value;
+        const type = document.getElementById('uType').value;
+
+        if (!unit || !resident) {
+            alert("Please provide unit number and resident name");
+            return;
+        }
+
+        if (editingUnitNo) {
+            const u = db.units.find(x => x.unit === editingUnitNo);
+            if (u) {
+                u.floor = floor;
+                u.resident = resident;
+                u.phone = phone;
+                u.status = status;
+                u.type = type;
+            }
+        } else {
+            if (db.units.some(x => x.unit === unit)) {
+                alert("Unit already exists!");
+                return;
+            }
+            db.units.push({ unit, floor, resident, phone, status, type });
+        }
+
+        saveDB();
+        closeActionModal();
+        renderUnits();
+        showToast(t('msg_unit_saved'));
+    }
+
+    // 8. ANNOUNCEMENTS
+    function renderAnnouncements() {
+        const container = document.getElementById('view-announcements');
+        container.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">${t('nav_announcements')}</h3>
+            <p class="text-secondary small mb-0">Broadcast alerts, maintenance schedules, and community news</p>
+          </div>
+          <button class="btn btn-primary" onclick="openNewAnnouncementModal()">
+            <i class="bi bi-megaphone me-1"></i> ${t('btn_new_announcement')}
+          </button>
+        </div>
+
+        <div class="row g-3">
+          ${db.announcements.map(a => `
+            <div class="col-12">
+              <div class="card border-0 shadow-sm rounded-3">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="fw-bold text-dark mb-0">${a.title}</h5>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">${a.date}</span>
+                  </div>
+                  <p class="text-secondary mb-3">${a.content}</p>
+                  <div class="d-flex align-items-center gap-2 small text-muted">
+                    <i class="bi bi-person-check-fill text-primary"></i>
+                    <span>Posted by: <strong>${a.author}</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function openNewAnnouncementModal() {
+        const body = `
+        <form id="annForm">
+          <div class="mb-3">
+            <label class="form-label">${t('th_title')}</label>
+            <input type="text" class="form-control" id="annTitle" required placeholder="e.g. Elevator Maintenance Scheduled">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Content / Details</label>
+            <textarea class="form-control" id="annContent" rows="4" required placeholder="Write announcement details here..."></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Author</label>
+            <input type="text" class="form-control" id="annAuthor" value="Condo Juristic Office">
+          </div>
+        </form>
+      `;
+        const footer = `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${t('btn_cancel')}</button>
+        <button type="button" class="btn btn-primary" onclick="submitAnnouncement()">${t('btn_save')}</button>
+      `;
+        openActionModal(t('btn_new_announcement'), body, footer);
+    }
+
+    function submitAnnouncement() {
+        const title = document.getElementById('annTitle').value;
+        const content = document.getElementById('annContent').value;
+        const author = document.getElementById('annAuthor').value || "Juristic Office";
+
+        if (!title || !content) {
+            alert("Please complete the title and content");
+            return;
+        }
+
+        db.announcements.unshift({
+            id: "A-" + Date.now().toString().slice(-3),
+            title, content, author,
+            date: new Date().toISOString().slice(0, 10)
+        });
+
+        saveDB();
+        closeActionModal();
+        renderAnnouncements();
+        showToast(t('msg_announcement_added'));
+    }
+
+    // App Initialization
+    document.addEventListener("DOMContentLoaded", () => {
+        switchLanguage(currentLang);
+        navigateTo('dashboard');
+    });
+</script>
+</body>
+</html>

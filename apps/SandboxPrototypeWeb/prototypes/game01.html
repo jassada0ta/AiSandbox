@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Fantasy Tactics Demo - Phaser</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #0b0c10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8), 0 0 15px rgba(45, 85, 125, 0.4);
+            border: 3px solid #3c4858;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        /* FFT PS1 Style UI Overlays */
+        .fft-panel {
+            position: absolute;
+            background: linear-gradient(180deg, #182848 0%, #0c1424 100%);
+            border: 2px solid #e0c068;
+            box-shadow: inset 0 0 4px #000, 2px 2px 5px rgba(0,0,0,0.7);
+            border-radius: 3px;
+            color: #f0f0f8;
+            font-weight: bold;
+            pointer-events: auto;
+        }
+        #help-text {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 6px 12px;
+            font-size: 13px;
+            border-color: #7289da;
+        }
+        #unit-card {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            width: 250px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 13px;
+        }
+        .stat-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2px;
+        }
+        .bar-bg {
+            width: 120px;
+            height: 10px;
+            background: #111;
+            border: 1px solid #666;
+            border-radius: 2px;
+            overflow: hidden;
+            display: inline-block;
+        }
+        .bar-fill-hp { height: 100%; background: #2ecc71; width: 100%; transition: width 0.3s; }
+        .bar-fill-mp { height: 100%; background: #3498db; width: 100%; }
+        .bar-fill-ct { height: 100%; background: #f39c12; width: 100%; }
+
+        #action-menu {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            width: 140px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .fft-btn {
+            background: #101c33;
+            border: 1px solid #7a8fa6;
+            color: #e2e8f0;
+            padding: 6px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+            font-weight: bold;
+            transition: all 0.1s;
+        }
+        .fft-btn:hover {
+            background: #2b4570;
+            border-color: #ffd700;
+            color: #fff;
+            transform: translateX(4px);
+        }
+        .fft-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            border-color: #444;
+        }
+
+        #target-preview {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            font-size: 13px;
+            display: none;
+            color: #ff9999;
+            border-color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="help-text" class="fft-panel">⚔️ FINAL FANTASY TACTICS - PS1 DEMO</div>
+
+    <!-- Target forecast banner (Hit% / Damage) -->
+    <div id="target-preview" class="fft-panel">HIT: 100% | DMG: 28</div>
+
+    <!-- Unit Status Window -->
+    <div id="unit-card" class="fft-panel">
+        <div style="font-size: 15px; color: #ffd700;" id="u-name">Ramza (Squire)</div>
+        <div class="stat-bar"><span>HP</span><span id="u-hp-val">74 / 74</span><div class="bar-bg"><div id="u-hp-bar" class="bar-fill-hp"></div></div></div>
+        <div class="stat-bar"><span>MP</span><span>32 / 32</span><div class="bar-bg"><div class="bar-fill-mp"></div></div></div>
+        <div class="stat-bar"><span>CT</span><span>100 / 100</span><div class="bar-bg"><div class="bar-fill-ct"></div></div></div>
+    </div>
+
+    <!-- Battle Command Menu -->
+    <div id="action-menu" class="fft-panel">
+        <button class="fft-btn" id="btn-move" onclick="triggerMoveMode()">▶ Move</button>
+        <button class="fft-btn" id="btn-act" onclick="triggerActMode()">▶ Attack</button>
+        <button class="fft-btn" id="btn-wait" onclick="triggerWait()">▶ Wait</button>
+    </div>
+</div>
+
+<script>
+    // --- AUDIO SYNTHESIS (Retro 16-bit sound effects via Web Audio API) ---
+    const AudioFX = {
+        ctx: null,
+        init() {
+            if (!this.ctx) {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        },
+        playCursor() {
+            this.init();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(480, this.ctx.currentTime);
+            osc.frequency.setValueAtTime(720, this.ctx.currentTime + 0.04);
+            gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.08);
+        },
+        playSelect() {
+            this.init();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(520, this.ctx.currentTime);
+            osc.frequency.setValueAtTime(1040, this.ctx.currentTime + 0.06);
+            gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.2);
+        },
+        playSlash() {
+            this.init();
+            // Noise buffer for sword woosh
+            const bufferSize = this.ctx.sampleRate * 0.15;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(3000, this.ctx.currentTime);
+            filter.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.15);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start();
+        },
+        playHit() {
+            this.init();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.25);
+            gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.25);
+        }
+    };
+
+    // --- PHASER CONFIG & LOGIC ---
+    const GRID_SIZE = 7;
+    const TILE_WIDTH = 64;
+    const TILE_HEIGHT = 32;
+    const ELEVATION_STEP = 16;
+    const ORIGIN_X = 400;
+    const ORIGIN_Y = 160;
+
+    // Heights for classic FFT uneven battlefield
+    const MAP_HEIGHTS = [
+        [0, 0, 1, 1, 0, 0, 0],
+        [0, 1, 2, 2, 1, 0, 0],
+        [1, 2, 3, 3, 2, 1, 0],
+        [1, 2, 3, 2, 1, 1, 0],
+        [0, 1, 2, 1, 1, 0, 0],
+        [0, 0, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0]
+    ];
+
+    let battleScene = null;
+
+    class FFTBattleScene extends Phaser.Scene {
+        constructor() {
+            super('FFTBattleScene');
+            battleScene = this;
+        }
+
+        preload() {
+            // Generate procedural pixel assets to guarantee zero missing files
+            this.generateTextures();
+        }
+
+        generateTextures() {
+            // 1. Isometric Tile Top Graphic
+            const gTile = this.make.graphics({ x: 0, y: 0, add: false });
+            gTile.lineStyle(1, 0x223322, 0.8);
+            gTile.fillStyle(0x4a7c59, 1); // FFT Grass
+            gTile.beginPath();
+            gTile.moveTo(32, 0);
+            gTile.lineTo(64, 16);
+            gTile.lineTo(32, 32);
+            gTile.lineTo(0, 16);
+            gTile.closePath();
+            gTile.fillPath();
+            gTile.strokePath();
+            // Inner bevel for PS1 look
+            gTile.lineStyle(1, 0x68a379, 0.6);
+            gTile.strokeRect(20, 10, 24, 12);
+            gTile.generateTexture('tile_top', 64, 32);
+
+            // 2. Tile Side Walls (Soil & stone strata)
+            const gSide = this.make.graphics({ x: 0, y: 0, add: false });
+            gSide.fillStyle(0x543d2b, 1);
+            gSide.fillRect(0, 0, 32, 60);
+            gSide.fillStyle(0x3e2c1e, 1); // Darker shadow side
+            gSide.fillRect(32, 0, 32, 60);
+            gSide.lineStyle(1, 0x24180f, 0.4);
+            for(let y = 10; y < 60; y += 12) {
+                gSide.lineBetween(0, y, 64, y);
+            }
+            gSide.generateTexture('tile_side', 64, 60);
+
+            // 3. Characters (Procedural FFT sprites with distinctive colors & swords)
+            this.createUnitTexture('hero_sprite', 0x2e64b6, 0xe0c068);   // Ramza (Blue tunic, blonde hair)
+            this.createUnitTexture('enemy_sprite', 0x9b2226, 0x4a4e69);  // Knight (Crimson armor, helmet)
+
+            // 4. Slash Effect Texture
+            const gSlash = this.make.graphics({ x: 0, y: 0, add: false });
+            gSlash.lineStyle(3, 0xffffff, 1);
+            gSlash.beginPath();
+            gSlash.arc(24, 24, 20, Phaser.Math.DegToRad(180), Phaser.Math.DegToRad(270), false);
+            gSlash.strokePath();
+            gSlash.lineStyle(2, 0x70d6ff, 0.9);
+            gSlash.beginPath();
+            gSlash.arc(24, 24, 16, Phaser.Math.DegToRad(190), Phaser.Math.DegToRad(280), false);
+            gSlash.strokePath();
+            gSlash.generateTexture('slash_fx', 48, 48);
+        }
+
+        createUnitTexture(key, bodyColor, headColor) {
+            const g = this.make.graphics({ x: 0, y: 0, add: false });
+            // Shadow
+            g.fillStyle(0x000000, 0.4);
+            g.fillEllipse(18, 44, 24, 10);
+
+            // Cape / back
+            g.fillStyle(Phaser.Display.Color.IntegerToColor(bodyColor).darken(25).color, 1);
+            g.fillRect(10, 22, 16, 18);
+
+            // Body / Armor
+            g.fillStyle(bodyColor, 1);
+            g.fillRect(12, 20, 12, 16);
+
+            // Head / Hair
+            g.fillStyle(headColor, 1);
+            g.fillRect(11, 10, 14, 12);
+            // Face skin
+            g.fillStyle(0xfcd5b4, 1);
+            g.fillRect(13, 14, 10, 6);
+
+            // Sword in hand
+            g.fillStyle(0xdcdcdc, 1);
+            g.fillRect(24, 12, 3, 20);
+            g.fillStyle(0xffd700, 1);
+            g.fillRect(22, 22, 7, 3); // Crossguard
+
+            g.generateTexture(key, 36, 48);
+        }
+
+        create() {
+            this.grid = [];
+            this.mode = 'IDLE'; // 'IDLE', 'MOVE', 'ACT'
+            this.playerMoved = false;
+            this.playerActed = false;
+
+            // Camera & Scene setup
+            this.cameras.main.setBackgroundColor('#141724');
+
+            // Create Isometric Battlefield
+            this.tileGroup = this.add.group();
+            this.renderIsometricMap();
+
+            // Spawn Units
+            this.hero = this.createUnit('Ramza', 1, 1, 'hero_sprite', 74, 18, true);
+            this.enemy = this.createUnit('Corpse Brigade', 4, 3, 'enemy_sprite', 65, 14, false);
+
+            // Selection Cursor Tile
+            this.cursorIndicator = this.add.polygon(0, 0, [
+                [32, 0], [64, 16], [32, 32], [0, 16]
+            ], 0xffffff, 0.4).setOrigin(0.5, 0.5).setVisible(false);
+
+            this.updateUnitUI(this.hero);
+        }
+
+        isoToScreen(gx, gy, gz) {
+            const x = ORIGIN_X + (gx - gy) * (TILE_WIDTH / 2);
+            const y = ORIGIN_Y + (gx + gy) * (TILE_HEIGHT / 2) - (gz * ELEVATION_STEP);
+            return { x, y };
+        }
+
+        renderIsometricMap() {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                this.grid[x] = [];
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const h = MAP_HEIGHTS[x][y];
+                    const pos = this.isoToScreen(x, y, h);
+
+                    // Under-pillar walls for elevations
+                    if (h > 0) {
+                        const side = this.add.image(pos.x, pos.y + 16 + (h * ELEVATION_STEP)/2, 'tile_side');
+                        side.setDisplaySize(TILE_WIDTH, h * ELEVATION_STEP);
+                        side.setDepth((x + y) * 10 - 2);
+                    }
+
+                    // Top grass face
+                    const tile = this.add.image(pos.x, pos.y, 'tile_top').setInteractive();
+                    tile.setDepth((x + y) * 10);
+                    tile.gridX = x;
+                    tile.gridY = y;
+                    tile.height = h;
+
+                    // Tile Highlights container
+                    const highlight = this.add.polygon(pos.x, pos.y, [
+                        [32, 0], [64, 16], [32, 32], [0, 16]
+                    ], 0x3388ff, 0).setOrigin(0.5, 0.5);
+                    highlight.setDepth((x + y) * 10 + 1);
+
+                    tile.highlight = highlight;
+
+                    tile.on('pointerdown', () => this.handleTileClick(tile));
+                    tile.on('pointerover', () => {
+                        AudioFX.playCursor();
+                        tile.setTint(0xddffdd);
+                    });
+                    tile.on('pointerout', () => tile.clearTint());
+
+                    this.grid[x][y] = tile;
+                }
+            }
+        }
+
+        createUnit(name, gx, gy, textureKey, hp, attackPower, isPlayer) {
+            const h = MAP_HEIGHTS[gx][gy];
+            const pos = this.isoToScreen(gx, gy, h);
+
+            const sprite = this.add.sprite(pos.x, pos.y - 12, textureKey);
+            sprite.setDepth((gx + gy) * 10 + 5);
+
+            const unit = {
+                name,
+                gx,
+                gy,
+                h,
+                hp,
+                maxHp: hp,
+                attackPower,
+                sprite,
+                isPlayer
+            };
+
+            // Idle breathing animation
+            this.tweens.add({
+                targets: sprite,
+                scaleY: 0.94,
+                y: '+=2',
+                duration: 800,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+
+            return unit;
+        }
+
+        clearHighlights() {
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    this.grid[x][y].highlight.setFillStyle(0x000000, 0);
+                }
+            }
+            document.getElementById('target-preview').style.display = 'none';
+        }
+
+        showMoveRange() {
+            this.clearHighlights();
+            this.mode = 'MOVE';
+            const maxMove = 3;
+
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const dist = Math.abs(x - this.hero.gx) + Math.abs(y - this.hero.gy);
+                    const heightDiff = Math.abs(MAP_HEIGHTS[x][y] - this.hero.h);
+
+                    // FFT rule: can only step up/down height differences <= 1
+                    if (dist > 0 && dist <= maxMove && heightDiff <= 1) {
+                        if (!(x === this.enemy.gx && y === this.enemy.gy)) {
+                            // Blue movement grid
+                            this.grid[x][y].highlight.setFillStyle(0x2d68c4, 0.55);
+                        }
+                    }
+                }
+            }
+        }
+
+        showAttackRange() {
+            this.clearHighlights();
+            this.mode = 'ACT';
+            const range = 1;
+
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const dist = Math.abs(x - this.hero.gx) + Math.abs(y - this.hero.gy);
+                    if (dist > 0 && dist <= range) {
+                        // Classic FFT red attack grid
+                        this.grid[x][y].highlight.setFillStyle(0xc72c41, 0.6);
+
+                        if (x === this.enemy.gx && y === this.enemy.gy) {
+                            const preview = document.getElementById('target-preview');
+                            preview.style.display = 'block';
+                            preview.innerText = `TARGET: ${this.enemy.name} | HIT: 100% | DMG: ${this.hero.attackPower}`;
+                        }
+                    }
+                }
+            }
+        }
+
+        handleTileClick(tile) {
+            if (this.mode === 'MOVE') {
+                const dist = Math.abs(tile.gridX - this.hero.gx) + Math.abs(tile.gridY - this.hero.gy);
+                const heightDiff = Math.abs(tile.height - this.hero.h);
+
+                if (dist > 0 && dist <= 3 && heightDiff <= 1 && !(tile.gridX === this.enemy.gx && tile.gridY === this.enemy.gy)) {
+                    this.executeMove(this.hero, tile.gridX, tile.gridY, () => {
+                        this.playerMoved = true;
+                        document.getElementById('btn-move').disabled = true;
+                        this.mode = 'IDLE';
+                        this.clearHighlights();
+                    });
+                }
+            } else if (this.mode === 'ACT') {
+                const dist = Math.abs(tile.gridX - this.hero.gx) + Math.abs(tile.gridY - this.hero.gy);
+                if (dist === 1 && tile.gridX === this.enemy.gx && tile.gridY === this.enemy.gy) {
+                    this.executeAttack(this.hero, this.enemy, () => {
+                        this.playerActed = true;
+                        document.getElementById('btn-act').disabled = true;
+                        this.mode = 'IDLE';
+                        this.clearHighlights();
+                        this.checkBattleStatus();
+                    });
+                }
+            }
+        }
+
+        executeMove(unit, targetGx, targetGy, onComplete) {
+            AudioFX.playSelect();
+            const targetH = MAP_HEIGHTS[targetGx][targetGy];
+            const targetPos = this.isoToScreen(targetGx, targetGy, targetH);
+
+            unit.gx = targetGx;
+            unit.gy = targetGy;
+            unit.h = targetH;
+            unit.sprite.setDepth((targetGx + targetGy) * 10 + 5);
+
+            // Jump-hop tween to destination
+            this.tweens.add({
+                targets: unit.sprite,
+                x: targetPos.x,
+                y: targetPos.y - 12,
+                duration: 450,
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    if (onComplete) onComplete();
+                }
+            });
+        }
+
+        executeAttack(attacker, defender, onComplete) {
+            AudioFX.playSelect();
+
+            // Step forward dash
+            const originalX = attacker.sprite.x;
+            const originalY = attacker.sprite.y;
+            const diffX = (defender.sprite.x - attacker.sprite.x) * 0.4;
+            const diffY = (defender.sprite.y - attacker.sprite.y) * 0.4;
+
+            this.tweens.add({
+                targets: attacker.sprite,
+                x: originalX + diffX,
+                y: originalY + diffY,
+                duration: 120,
+                yoyo: true,
+                onYoyo: () => {
+                    // Slash VFX & hit sounds
+                    AudioFX.playSlash();
+                    const slash = this.add.sprite(defender.sprite.x, defender.sprite.y - 8, 'slash_fx')
+                        .setDepth(999)
+                        .setScale(1.2);
+
+                    this.tweens.add({
+                        targets: slash,
+                        angle: 120,
+                        alpha: 0,
+                        scale: 1.8,
+                        duration: 220,
+                        onComplete: () => slash.destroy()
+                    });
+
+                    // Defender impact & recoil
+                    this.time.delayedCall(80, () => {
+                        AudioFX.playHit();
+                        this.cameras.main.shake(150, 0.008);
+                        defender.sprite.setTint(0xff5555);
+                        defender.hp = Math.max(0, defender.hp - attacker.attackPower);
+
+                        this.showDamagePopup(defender.sprite.x, defender.sprite.y - 30, attacker.attackPower);
+
+                        this.tweens.add({
+                            targets: defender.sprite,
+                            x: defender.sprite.x + diffX * 0.3,
+                            yoyo: true,
+                            duration: 80,
+                            repeat: 2,
+                            onComplete: () => {
+                                defender.sprite.clearTint();
+                                if (attacker.isPlayer) {
+                                    this.updateEnemyUI();
+                                } else {
+                                    this.updateUnitUI(this.hero);
+                                }
+                            }
+                        });
+                    });
+                },
+                onComplete: () => {
+                    this.time.delayedCall(300, () => {
+                        if (onComplete) onComplete();
+                    });
+                }
+            });
+        }
+
+        showDamagePopup(x, y, damage) {
+            const text = this.add.text(x, y, `${damage}`, {
+                fontFamily: 'Courier New, monospace',
+                fontSize: '20px',
+                fontStyle: 'bold',
+                color: '#ffffff',
+                stroke: '#990000',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(1000);
+
+            this.tweens.add({
+                targets: text,
+                y: y - 30,
+                scale: 1.2,
+                duration: 600,
+                ease: 'Back.easeOut',
+                onComplete: () => {
+                    this.tweens.add({
+                        targets: text,
+                        alpha: 0,
+                        duration: 200,
+                        onComplete: () => text.destroy()
+                    });
+                }
+            });
+        }
+
+        enemyAITurn() {
+            this.setMenuDisabled(true);
+            document.getElementById('help-text').innerText = "⚔️ ENEMY TURN...";
+
+            this.time.delayedCall(800, () => {
+                if (this.enemy.hp <= 0) return;
+
+                const dist = Math.abs(this.hero.gx - this.enemy.gx) + Math.abs(this.hero.gy - this.enemy.gy);
+
+                // If adjacent, attack Ramza
+                if (dist === 1) {
+                    this.executeAttack(this.enemy, this.hero, () => {
+                        this.endTurnCycle();
+                    });
+                } else {
+                    // Move towards Ramza
+                    let stepX = this.enemy.gx + Math.sign(this.hero.gx - this.enemy.gx);
+                    let stepY = this.enemy.gy;
+                    if (stepX === this.hero.gx && stepY === this.hero.gy) {
+                        stepX = this.enemy.gx;
+                        stepY = this.enemy.gy + Math.sign(this.hero.gy - this.enemy.gy);
+                    }
+
+                    this.executeMove(this.enemy, stepX, stepY, () => {
+                        // Check if adjacent after move
+                        const newDist = Math.abs(this.hero.gx - this.enemy.gx) + Math.abs(this.hero.gy - this.enemy.gy);
+                        if (newDist === 1) {
+                            this.executeAttack(this.enemy, this.hero, () => {
+                                this.endTurnCycle();
+                            });
+                        } else {
+                            this.endTurnCycle();
+                        }
+                    });
+                }
+            });
+        }
+
+        endTurnCycle() {
+            this.playerMoved = false;
+            this.playerActed = false;
+            this.mode = 'IDLE';
+            this.setMenuDisabled(false);
+            this.updateUnitUI(this.hero);
+            document.getElementById('help-text').innerText = "⚔️ RAMZA'S TURN";
+            this.checkBattleStatus();
+        }
+
+        checkBattleStatus() {
+            if (this.enemy.hp <= 0) {
+                document.getElementById('help-text').innerText = "🏆 VICTORY ACHIEVED!";
+                this.enemy.sprite.setAlpha(0.3);
+                this.setMenuDisabled(true);
+            } else if (this.hero.hp <= 0) {
+                document.getElementById('help-text').innerText = "💀 DEFEAT...";
+                this.hero.sprite.setAlpha(0.3);
+                this.setMenuDisabled(true);
+            }
+        }
+
+        setMenuDisabled(disabled) {
+            document.getElementById('btn-move').disabled = disabled || this.playerMoved;
+            document.getElementById('btn-act').disabled = disabled || this.playerActed;
+            document.getElementById('btn-wait').disabled = disabled;
+        }
+
+        updateUnitUI(unit) {
+            document.getElementById('u-name').innerText = `${unit.name}`;
+            document.getElementById('u-hp-val').innerText = `${unit.hp} / ${unit.maxHp}`;
+            const pct = Math.max(0, (unit.hp / unit.maxHp) * 100);
+            document.getElementById('u-hp-bar').style.width = `${pct}%`;
+        }
+
+        updateEnemyUI() {
+            const preview = document.getElementById('target-preview');
+            if (this.enemy.hp <= 0) {
+                preview.innerText = `${this.enemy.name} DEFEATED`;
+            } else {
+                preview.innerText = `${this.enemy.name} HP: ${this.enemy.hp}/${this.enemy.maxHp}`;
+            }
+        }
+    }
+
+    // Global button handlers hooked to UI
+    function triggerMoveMode() {
+        AudioFX.playSelect();
+        battleScene.showMoveRange();
+    }
+
+    function triggerActMode() {
+        AudioFX.playSelect();
+        battleScene.showAttackRange();
+    }
+
+    function triggerWait() {
+        AudioFX.playSelect();
+        battleScene.clearHighlights();
+        battleScene.enemyAITurn();
+    }
+
+    // Boot Phaser Game
+    const config = {
+        type: Phaser.AUTO,
+        width: 800,
+        height: 520,
+        parent: 'game-container',
+        pixelArt: true,
+        scene: [FFTBattleScene]
+    };
+
+    new Phaser.Game(config);
+</script>
+</body>
+</html>

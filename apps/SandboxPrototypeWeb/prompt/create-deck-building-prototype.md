@@ -1,8 +1,8 @@
-Create prototype game that has following specifications.
+Create prototype game that has the following specifications.
 
 - It use vanillajs+html+css 
 
-- It self contained in one html file
+- It self-contained in one html file
 
 - Save output into SandboxPrototype web
 

@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Final Fantasy Tactics - PS1 Isometric Battle Demo</title>
+
+    <!-- Phaser 3 Core Library -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <!-- Tailwind CSS for UI HUD Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Medieval & Retro Pixel aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=VT323&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0c0d12;
+            font-family: 'VT323', monospace;
+        }
+
+        /* PS1 Final Fantasy Tactics Blue Dialog Box Theme */
+        .fft-box {
+            background: radial-gradient(ellipse at top left, #163668 0%, #0c1c38 60%, #050b18 100%);
+            border: 3px solid #dfc278;
+            box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.25), 0 6px 16px rgba(0, 0, 0, 0.85);
+            border-radius: 4px;
+            position: relative;
+        }
+        .fft-box::before {
+            content: '';
+            position: absolute;
+            inset: 2px;
+            border: 1px solid #755f2c;
+            pointer-events: none;
+        }
+
+        /* Ornate PS1 Corner Accents */
+        .fft-corner {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #f7e6a4;
+            border: 1px solid #523f18;
+        }
+
+        /* Classic FFT Action Menu Buttons */
+        .fft-menu-item {
+            transition: all 0.15s ease-out;
+            text-shadow: 2px 2px 0px #000;
+            letter-spacing: 1px;
+        }
+        .fft-menu-item:hover, .fft-menu-item.active {
+            background: linear-gradient(90deg, rgba(223, 194, 120, 0.4) 0%, rgba(223, 194, 120, 0.05) 100%);
+            color: #fff9d2;
+            padding-left: 14px;
+        }
+        .fft-menu-item.disabled {
+            color: #5c677d;
+            text-shadow: 1px 1px 0px #000;
+            pointer-events: none;
+        }
+
+        /* CRT Scanline Filter effect for authentic PS1 nostalgia */
+        .scanlines {
+            background: linear-gradient(
+                    rgba(18, 16, 16, 0) 50%,
+                    rgba(0, 0, 0, 0.28) 50%
+            ), linear-gradient(
+                    90deg,
+                    rgba(255, 0, 0, 0.03),
+                    rgba(0, 255, 0, 0.01),
+                    rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        /* Gold Serif Titles */
+        .fft-title {
+            font-family: 'Cinzel', serif;
+            color: #f7e6a4;
+            text-shadow: 2px 2px 3px rgba(0,0,0,0.9), 0 0 10px rgba(223, 194, 120, 0.4);
+        }
+    </style>
+</head>
+<body class="flex flex-col w-full h-full text-white">
+
+<!-- Main Game Container -->
+<div id="game-container" class="relative w-full h-full overflow-hidden bg-black flex items-center justify-center">
+
+    <!-- Phaser Canvas Mounting Point -->
+    <div id="phaser-mount" class="w-full h-full absolute inset-0"></div>
+
+    <!-- Scanline CRT Overlay (Toggleable) -->
+    <div id="scanline-overlay" class="scanlines absolute inset-0 z-10 pointer-events-none"></div>
+
+    <!-- Top Header HUD: Battlefield Title & Turn Indicator -->
+    <header class="absolute top-3 left-3 right-3 flex justify-between items-center z-20 pointer-events-none">
+        <div class="fft-box px-4 py-1.5 flex items-center gap-3 pointer-events-auto">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <h1 class="fft-title text-base sm:text-lg tracking-wider font-bold">MANDALIA PLAINS - CHAPTER 1</h1>
+            <span class="text-xs text-amber-200/70 border-l border-amber-500/40 pl-3 hidden md:inline">PS1 TACTICAL ENGINE</span>
+        </div>
+
+        <!-- Camera Rotation and Sound Buttons -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btn-rot-left" title="Rotate Left [Q]" class="fft-box px-3 py-1.5 text-sm sm:text-base font-bold text-amber-200 hover:text-white active:scale-95 flex items-center gap-1.5">
+                <span>↺ [Q] L1</span>
+            </button>
+            <button id="btn-rot-right" title="Rotate Right [E]" class="fft-box px-3 py-1.5 text-sm sm:text-base font-bold text-amber-200 hover:text-white active:scale-95 flex items-center gap-1.5">
+                <span>[E] R1 ↻</span>
+            </button>
+            <button id="btn-audio-toggle" title="Toggle Music & SFX" class="fft-box px-3 py-1.5 text-sm sm:text-base text-amber-200 hover:text-white active:scale-95">
+                <span id="audio-icon">🔊 BGM ON</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Tile & Active Target Inspector (Top Left under Header) -->
+    <div id="tile-inspector" class="absolute top-16 left-3 z-20 fft-box p-3 min-w-[210px] hidden sm:block pointer-events-none">
+        <div class="fft-corner -top-1 -left-1"></div>
+        <div class="fft-corner -top-1 -right-1"></div>
+        <div class="fft-corner -bottom-1 -left-1"></div>
+        <div class="fft-corner -bottom-1 -right-1"></div>
+        <div class="text-amber-300 font-bold text-xs uppercase tracking-wider mb-1 border-b border-amber-600/40 pb-0.5">Terrain Info</div>
+        <div class="flex justify-between text-base">
+            <span class="text-slate-300">Target Tile:</span>
+            <span id="tile-coord" class="text-amber-200 font-bold">(0, 0)</span>
+        </div>
+        <div class="flex justify-between text-base">
+            <span class="text-slate-300">Elevation:</span>
+            <span id="tile-height" class="text-cyan-300 font-bold">2.0 h</span>
+        </div>
+        <div class="flex justify-between text-base">
+            <span class="text-slate-300">Terrain:</span>
+            <span id="tile-type" class="text-emerald-300">Verdant Grass</span>
+        </div>
+    </div>
+
+    <!-- Active Unit Turn Banner (Center Top) -->
+    <div id="turn-banner" class="absolute top-16 left-1/2 -translate-x-1/2 z-20 fft-box px-6 py-2 flex items-center gap-3 transition-transform duration-300">
+        <span class="text-amber-300 text-sm tracking-widest font-bold">ACTIVE TURN:</span>
+        <span id="active-unit-name" class="text-xl text-yellow-100 font-bold tracking-wide">Squire Ramza</span>
+        <span class="text-xs px-2 py-0.5 bg-blue-900 border border-amber-400/60 rounded text-amber-200">CT 100</span>
+    </div>
+
+    <!-- Bottom Left: Unit Status Window (Classic FFT Style with Portrait) -->
+    <div id="unit-card" class="absolute bottom-3 left-3 z-20 fft-box p-3 sm:p-4 w-72 sm:w-80 shadow-2xl">
+        <div class="fft-corner -top-1 -left-1"></div>
+        <div class="fft-corner -top-1 -right-1"></div>
+        <div class="fft-corner -bottom-1 -left-1"></div>
+        <div class="fft-corner -bottom-1 -right-1"></div>
+
+        <div class="flex items-center gap-3">
+            <!-- Canvas/Generated Unit Mini Portrait -->
+            <div id="portrait-frame" class="w-14 h-14 sm:w-16 sm:h-16 border-2 border-amber-400 bg-slate-900 rounded overflow-hidden relative shadow-inner flex items-center justify-center">
+                <canvas id="portrait-canvas" width="64" height="64" class="w-full h-full image-pixelated"></canvas>
+            </div>
+
+            <!-- Unit Basic Bio -->
+            <div class="flex-1">
+                <div class="flex justify-between items-baseline">
+                    <span id="card-unit-name" class="text-xl sm:text-2xl font-bold text-amber-200 tracking-wider">Ramza</span>
+                    <span id="card-unit-job" class="text-sm text-cyan-200 font-semibold">Squire</span>
+                </div>
+                <div class="flex gap-4 text-xs sm:text-sm text-amber-100/90">
+                    <span>LV: <strong id="card-unit-lvl" class="text-white">14</strong></span>
+                    <span>EXP: <strong id="card-unit-exp" class="text-white">82</strong></span>
+                    <span>BRAVE: <strong class="text-amber-300">77</strong></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- HP & MP Gauges -->
+        <div class="mt-2.5 space-y-1.5 text-sm sm:text-base">
+            <!-- HP Bar -->
+            <div>
+                <div class="flex justify-between text-xs sm:text-sm leading-none mb-0.5">
+                    <span class="text-emerald-300 font-bold">HP</span>
+                    <span id="card-hp-text" class="text-slate-100 font-bold">135 / 135</span>
+                </div>
+                <div class="w-full bg-slate-950 border border-slate-700 h-2.5 rounded-sm overflow-hidden p-0.5">
+                    <div id="card-hp-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-300" style="width: 100%;"></div>
+                </div>
+            </div>
+            <!-- MP Bar -->
+            <div>
+                <div class="flex justify-between text-xs sm:text-sm leading-none mb-0.5">
+                    <span class="text-blue-300 font-bold">MP</span>
+                    <span id="card-mp-text" class="text-slate-100 font-bold">48 / 48</span>
+                </div>
+                <div class="w-full bg-slate-950 border border-slate-700 h-2.5 rounded-sm overflow-hidden p-0.5">
+                    <div id="card-mp-bar" class="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300" style="width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Move / Jump / Facing Info -->
+        <div class="mt-2 pt-1.5 border-t border-amber-600/30 flex justify-between text-xs sm:text-sm text-slate-300">
+            <span>MOVE: <b id="card-stat-move" class="text-amber-300">4</b></span>
+            <span>JUMP: <b id="card-stat-jump" class="text-amber-300">2</b></span>
+            <span>FACING: <b id="card-stat-face" class="text-amber-300">SOUTH</b></span>
+        </div>
+    </div>
+
+    <!-- Bottom Right: FFT Command Action Window -->
+    <div id="tactics-menu" class="absolute bottom-3 right-3 z-30 fft-box p-3 w-52 sm:w-56 shadow-2xl">
+        <div class="fft-corner -top-1 -left-1"></div>
+        <div class="fft-corner -top-1 -right-1"></div>
+        <div class="fft-corner -bottom-1 -left-1"></div>
+        <div class="fft-corner -bottom-1 -right-1"></div>
+
+        <div class="text-amber-300 font-bold text-sm uppercase tracking-wider mb-2 border-b border-amber-500/40 pb-1 flex justify-between items-center">
+            <span>COMMAND</span>
+            <span class="text-xs text-amber-200/60">[ESC to Cancel]</span>
+        </div>
+
+        <!-- Main Command Buttons -->
+        <div id="menu-main-list" class="flex flex-col space-y-1 text-lg sm:text-xl">
+            <button id="cmd-move" class="fft-menu-item text-left px-2 py-1 rounded text-white flex items-center justify-between">
+                <span>⚔ MOVE</span>
+                <span class="text-xs text-cyan-300 font-mono">BLUE</span>
+            </button>
+            <button id="cmd-act" class="fft-menu-item text-left px-2 py-1 rounded text-white flex items-center justify-between">
+                <span>⚡ ACTION</span>
+                <span class="text-xs text-rose-300 font-mono">RED</span>
+            </button>
+            <button id="cmd-wait" class="fft-menu-item text-left px-2 py-1 rounded text-white flex items-center justify-between">
+                <span>⏳ WAIT</span>
+                <span class="text-xs text-amber-300 font-mono">END</span>
+            </button>
+            <button id="cmd-status" class="fft-menu-item text-left px-2 py-1 rounded text-white flex items-center justify-between">
+                <span>📜 STATUS</span>
+                <span class="text-xs text-slate-300 font-mono">INFO</span>
+            </button>
+        </div>
+
+        <!-- Submenu: Action Choices (Attack vs Magic) -->
+        <div id="menu-sub-act" class="hidden flex flex-col space-y-1 text-lg sm:text-xl">
+            <button id="act-attack" class="fft-menu-item text-left px-2 py-1 rounded text-amber-100 flex items-center justify-between">
+                <span>🗡 Basic Attack</span>
+                <span class="text-xs text-slate-300">R:1</span>
+            </button>
+            <button id="act-fire" class="fft-menu-item text-left px-2 py-1 rounded text-rose-200 flex items-center justify-between">
+                <span>🔥 Fire Magick</span>
+                <span class="text-xs text-rose-300">12 MP</span>
+            </button>
+            <button id="act-back" class="fft-menu-item text-left px-2 py-1 rounded text-slate-400 mt-1 border-t border-slate-700">
+                <span>↩ Back</span>
+            </button>
+        </div>
+
+        <!-- Submenu: Wait Facing Selection -->
+        <div id="menu-sub-facing" class="hidden flex flex-col space-y-1 text-base sm:text-lg">
+            <div class="text-xs text-amber-200 mb-1">Select final direction:</div>
+            <div class="grid grid-cols-2 gap-1.5">
+                <button data-dir="NORTH" class="fft-facing-btn fft-box p-1.5 text-center text-sm font-bold text-amber-100 hover:bg-amber-600/30">▲ NORTH</button>
+                <button data-dir="EAST" class="fft-facing-btn fft-box p-1.5 text-center text-sm font-bold text-amber-100 hover:bg-amber-600/30">► EAST</button>
+                <button data-dir="SOUTH" class="fft-facing-btn fft-box p-1.5 text-center text-sm font-bold text-amber-100 hover:bg-amber-600/30">▼ SOUTH</button>
+                <button data-dir="WEST" class="fft-facing-btn fft-box p-1.5 text-center text-sm font-bold text-amber-100 hover:bg-amber-600/30">◄ WEST</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Controls Helper / Hint Overlay -->
+    <div class="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none hidden lg:flex items-center gap-3 bg-black/60 px-4 py-1 rounded-full border border-amber-500/30 text-xs text-amber-100/80">
+        <span>🖱 Click / Hover: Select Tile</span>
+        <span>•</span>
+        <span>Arrows / WASD: Move Cursor</span>
+        <span>•</span>
+        <span>Q / E: Rotate Camera 90°</span>
+        <span>•</span>
+        <span>SPACE / ENTER: Confirm</span>
+    </div>
+
+    <!-- Battle Dialog / System Banner Toast (Non-alert) -->
+    <div id="game-toast" class="absolute top-28 left-1/2 -translate-x-1/2 z-40 fft-box px-6 py-2.5 text-lg sm:text-xl text-center text-amber-100 font-bold opacity-0 transition-opacity duration-300 pointer-events-none shadow-2xl">
+        <span id="toast-text">Target within range!</span>
+    </div>
+</div>
+
+<script>
+    /**
+     * Web Audio API Synthesizer for 16-bit / PS1 Sound Effects & Chiptune Music
+     * Zero external audio files required! 100% reliable procedural sounds.
+     */
+    class RetroAudioEngine {
+        constructor() {
+            this.ctx = null;
+            this.isMuted = false;
+            this.bgmTimer = null;
+            this.bgmNoteIndex = 0;
+        }
+
+        init() {
+            if (!this.ctx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.startBGM();
+            }
+        }
+
+        playTone(freq, type = 'sine', duration = 0.1, gainVal = 0.15, pitchDecay = true) {
+            if (this.isMuted) return;
+            this.init();
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            if (pitchDecay) {
+                osc.frequency.exponentialRampToValueAtTime(Math.max(10, freq * 0.4), this.ctx.currentTime + duration);
+            }
+
+            gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+        }
+
+        // Classic FFT Cursor Chirp
+        playCursor() {
+            this.playTone(880, 'triangle', 0.04, 0.1, false);
+        }
+
+        // FFT Affirmative Menu Ding
+        playConfirm() {
+            if (this.isMuted) return;
+            this.init();
+            const now = this.ctx.currentTime;
+            [523.25, 659.25, 783.99].forEach((freq, i) => {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + i * 0.05);
+                gain.gain.setValueAtTime(0.12, now + i * 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.18);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now + i * 0.05);
+                osc.stop(now + i * 0.05 + 0.18);
+            });
+        }
+
+        // Cancel / Error sound
+        playCancel() {
+            this.playTone(320, 'sawtooth', 0.12, 0.09, true);
+        }
+
+        // Camera 90-degree Swoosh
+        playRotate() {
+            if (this.isMuted) return;
+            this.init();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(260, now);
+            osc.frequency.exponentialRampToValueAtTime(620, now + 0.15);
+            osc.frequency.exponentialRampToValueAtTime(180, now + 0.25);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.25);
+        }
+
+        // Sword slash physical impact
+        playAttack() {
+            if (this.isMuted) return;
+            this.init();
+            const now = this.ctx.currentTime;
+            // White noise burst
+            const bufferSize = this.ctx.sampleRate * 0.15;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2500, now);
+            filter.frequency.exponentialRampToValueAtTime(300, now + 0.15);
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start(now);
+        }
+
+        // Fire magic explosion
+        playFireSpell() {
+            if (this.isMuted) return;
+            this.init();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.4);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.45);
+        }
+
+        // Simple Medieval Fantasy 16-bit Harpsichord BGM loop
+        startBGM() {
+            if (this.bgmTimer) return;
+            const notes = [
+                220.00, 261.63, 329.63, 392.00, 329.63, 261.63, // A Minor arpeggio
+                196.00, 246.94, 293.66, 392.00, 293.66, 246.94, // G Major arpeggio
+                174.61, 220.00, 261.63, 349.23, 261.63, 220.00, // F Major arpeggio
+                164.81, 207.65, 246.94, 329.63, 246.94, 207.65  // E Dominant
+            ];
+            this.bgmTimer = setInterval(() => {
+                if (this.isMuted || !this.ctx) return;
+                const freq = notes[this.bgmNoteIndex % notes.length];
+                this.bgmNoteIndex++;
+                this.playTone(freq, 'triangle', 0.22, 0.035, false);
+            }, 220);
+        }
+
+        toggleAudio() {
+            this.isMuted = !this.isMuted;
+            if (!this.isMuted && this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+            return !this.isMuted;
+        }
+    }
+
+    const sound = new RetroAudioEngine();
+
+    // Attach sound toggle button listener
+    document.getElementById('btn-audio-toggle').addEventListener('click', () => {
+        const active = sound.toggleAudio();
+        document.getElementById('audio-icon').textContent = active ? '🔊 BGM ON' : '🔈 MUTED';
+    });
+</script>
+
+<script>
+    /**
+     * Map Matrix & Isometric Projection Math
+     * 10x10 Grid with Elevation (Height) levels 1 to 4 and terrain types
+     */
+    const GRID_SIZE = 10;
+    const TILE_WIDTH = 54;    // Isometric diamond width
+    const TILE_HEIGHT = 27;   // Isometric diamond height (2:1 classic ratio)
+    const HEIGHT_STEP = 16;   // Pixel elevation per height unit
+
+    // Map elevations (Mandalia Plains river and stone ruins layout)
+    const ELEVATION_MAP = [
+        [1, 1, 1, 1, 2, 2, 2, 1, 1, 1],
+        [1, 1, 2, 2, 3, 3, 2, 2, 1, 1],
+        [1, 2, 2, 3, 4, 3, 3, 2, 2, 1],
+        [1, 2, 3, 4, 4, 3, 2, 1, 0, 0],
+        [1, 2, 3, 3, 3, 2, 1, 0, 0, 1],
+        [2, 2, 2, 2, 1, 1, 0, 0, 1, 2],
+        [2, 3, 2, 1, 1, 0, 0, 1, 2, 3],
+        [2, 3, 3, 2, 1, 1, 1, 2, 3, 4],
+        [1, 2, 3, 2, 2, 2, 2, 3, 4, 4],
+        [1, 1, 2, 2, 2, 2, 3, 3, 4, 3]
+    ];
+
+    // Terrain types: 0 = Water/Stream, 1 = Grass, 2 = Earth, 3 = Ancient Stone Ruins
+    const TERRAIN_MAP = [
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 3, 3, 1, 1, 1, 1],
+        [1, 1, 3, 3, 3, 3, 3, 1, 1, 1],
+        [1, 1, 3, 3, 3, 3, 1, 1, 0, 0],
+        [1, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 0, 0, 1, 1],
+        [1, 3, 1, 1, 1, 0, 0, 1, 1, 3],
+        [1, 3, 3, 1, 1, 1, 1, 1, 3, 3],
+        [1, 1, 3, 1, 1, 1, 1, 3, 3, 3],
+        [1, 1, 1, 1, 1, 1, 3, 3, 3, 3]
+    ];
+
+    /**
+     * Camera Rotation Angle Index:
+     * 0 = Default (South-East facing view)
+     * 1 = 90 deg clockwise
+     * 2 = 180 deg
+     * 3 = 270 deg
+     */
+    function transformCoords(x, y, rotation) {
+        switch (rotation % 4) {
+            case 0: return { rx: x, ry: y };
+            case 1: return { rx: y, ry: GRID_SIZE - 1 - x };
+            case 2: return { rx: GRID_SIZE - 1 - x, ry: GRID_SIZE - 1 - y };
+            case 3: return { rx: GRID_SIZE - 1 - y, ry: x };
+            default: return { rx: x, ry: y };
+        }
+    }
+
+    function inverseTransformCoords(rx, ry, rotation) {
+        switch (rotation % 4) {
+            case 0: return { x: rx, y: ry };
+            case 1: return { x: GRID_SIZE - 1 - ry, y: rx };
+            case 2: return { x: GRID_SIZE - 1 - rx, y: GRID_SIZE - 1 - ry };
+            case 3: return { x: ry, y: GRID_SIZE - 1 - rx };
+            default: return { x: rx, y: ry };
+        }
+    }
+
+    /**
+     * Converts Rotated Grid Coords + Elevation into Screen Isometric XY
+     */
+    function gridToScreen(rx, ry, height, originX, originY) {
+        const sx = originX + (rx - ry) * (TILE_WIDTH / 2);
+        const sy = originY + (rx + ry) * (TILE_HEIGHT / 2) - (height * HEIGHT_STEP);
+        return { x: sx, y: sy };
+    }
+</script>
+
+<script>
+    /**
+     * Tactical Unit Definitions (Ramza Squire, Agrias Holy Knight, 2 Enemies)
+     */
+    const INITIAL_UNITS = [
+        {
+            id: 'ramza',
+            name: 'Ramza',
+            job: 'Squire',
+            isPlayer: true,
+            x: 2,
+            y: 2,
+            facing: 'SOUTH', // NORTH, EAST, SOUTH, WEST
+            maxHp: 135,
+            hp: 135,
+            maxMp: 48,
+            mp: 48,
+            move: 4,
+            jump: 2,
+            speed: 9,
+            ct: 100, // Starts ready
+            color: 0x4a7cff,
+            hairColor: 0xffd269,
+            hasMoved: false,
+            hasActed: false
+        },
+        {
+            id: 'agrias',
+            name: 'Agrias',
+            job: 'Holy Knight',
+            isPlayer: true,
+            x: 3,
+            y: 1,
+            facing: 'SOUTH',
+            maxHp: 160,
+            hp: 160,
+            maxMp: 55,
+            mp: 55,
+            move: 3,
+            jump: 3,
+            speed: 8,
+            ct: 75,
+            color: 0x6dbdff,
+            hairColor: 0xf5f0cb,
+            hasMoved: false,
+            hasActed: false
+        },
+        {
+            id: 'enemy_knight',
+            name: 'Brigand',
+            job: 'Corpse Knight',
+            isPlayer: false,
+            x: 7,
+            y: 7,
+            facing: 'NORTH',
+            maxHp: 120,
+            hp: 120,
+            maxMp: 20,
+            mp: 20,
+            move: 3,
+            jump: 2,
+            speed: 7,
+            ct: 60,
+            color: 0xd63031,
+            hairColor: 0x2d3436,
+            hasMoved: false,
+            hasActed: false
+        },
+        {
+            id: 'enemy_mage',
+            name: 'Black Mage',
+            job: 'Black Mage',
+            isPlayer: false,
+            x: 8,
+            y: 6,
+            facing: 'WEST',
+            maxHp: 85,
+            hp: 85,
+            maxMp: 70,
+            mp: 70,
+            move: 3,
+            jump: 2,
+            speed: 6,
+            ct: 50,
+            color: 0x6c5ce7,
+            hairColor: 0xfdcb6e,
+            hasMoved: false,
+            hasActed: false
+        }
+    ];
+
+    // Global Interactive State
+    const BattleState = {
+        MODE_IDLE: 'IDLE',
+        MODE_SELECT_MOVE: 'SELECT_MOVE',
+        MODE_MOVING: 'MOVING',
+        MODE_SELECT_ACTION_TARGET: 'SELECT_ACTION_TARGET',
+        MODE_SELECT_MAGIC_TARGET: 'SELECT_MAGIC_TARGET',
+        MODE_SELECT_FACING: 'SELECT_FACING',
+        MODE_ENEMY_TURN: 'ENEMY_TURN'
+    };
+
+    let currentRotation = 0; // 0, 1, 2, 3
+    let activeUnit = null;
+    let currentMode = BattleState.MODE_IDLE;
+    let unitsList = JSON.parse(JSON.stringify(INITIAL_UNITS));
+    let cursorGrid = { x: 2, y: 2 };
+    let reachableTiles = [];
+    let targetableTiles = [];
+</script>
+
+<script>
+    class FFTBattleScene extends Phaser.Scene {
+        constructor() {
+            super({ key: 'FFTBattleScene' });
+        }
+
+        preload() {
+            // Generate crisp procedural sprites and UI textures in-memory
+            this.generateProceduralSprites();
+        }
+
+        create() {
+            this.cameras.main.setBackgroundColor('#08090d');
+
+            // Setup scene layers & groups
+            this.terrainGroup = this.add.group();
+            this.overlayGroup = this.add.group();
+            this.unitSprites = new Map();
+            this.effectGroup = this.add.group();
+
+            // Isometric Origin Anchor (Centered in the viewport)
+            this.originX = this.scale.width / 2;
+            this.originY = this.scale.height / 2 - 20;
+
+            // Create 3D Cursor indicator and spawn units before rendering map
+            this.createCursor();
+            this.spawnUnits();
+
+            // Draw initial 3D Isometric Map Blocks
+            this.renderIsometricMap();
+
+            // Setup Keyboard & Mouse Inputs
+            this.setupInputHandlers();
+
+            // Setup DOM Menu Action Listeners
+            this.bindDOMUIEvents();
+
+            // Start FFT Charge Time (CT) Turn Engine
+            this.initNextTurn();
+
+            // Draw Ramza Face on Bottom Left portrait canvas
+            this.drawUnitPortrait(unitsList[0]);
+            this.updateInspectorUI(cursorGrid.x, cursorGrid.y);
+        }
+
+        generateProceduralSprites() {
+            // 1. Procedural 3D Isometric Cursor Hand / Diamond
+            const cursorGfx = this.make.graphics({ x: 0, y: 0, add: false });
+            cursorGfx.lineStyle(2, 0xffeaa7, 1);
+            cursorGfx.fillStyle(0xf39c12, 0.85);
+            cursorGfx.beginPath();
+            cursorGfx.moveTo(0, -18);
+            cursorGfx.lineTo(14, -6);
+            cursorGfx.lineTo(0, 6);
+            cursorGfx.lineTo(-14, -6);
+            cursorGfx.closePath();
+            cursorGfx.fillPath();
+            cursorGfx.strokePath();
+
+            // Internal jewel accent
+            cursorGfx.fillStyle(0xffffff, 0.9);
+            cursorGfx.fillCircle(0, -6, 3);
+            cursorGfx.generateTexture('fft_cursor', 32, 32);
+
+            // 2. Procedural Character Sprites (Facing Directions)
+            this.createUnitTexture('char_squire', 0x2b5797, 0xffd269, 'SWORD');
+            this.createUnitTexture('char_knight', 0x4a69bd, 0xf5f0cb, 'HOLY_SWORD');
+            this.createUnitTexture('char_brigand', 0xb71540, 0x1e272e, 'AXE');
+            this.createUnitTexture('char_mage', 0x574b90, 0xffb142, 'STAFF');
+        }
+
+        createUnitTexture(key, coatColor, hairColor, weaponType) {
+            const gfx = this.make.graphics({ x: 0, y: 0, add: false });
+            const w = 48, h = 64;
+
+            // Shadow
+            gfx.fillStyle(0x000000, 0.45);
+            gfx.fillEllipse(24, 56, 28, 12);
+
+            // Body / Tunic / Armor
+            gfx.fillStyle(coatColor, 1);
+            gfx.fillRoundedRect(14, 28, 20, 22, 3);
+
+            // Cape / Armor Trim
+            gfx.fillStyle(0xdfe4ea, 0.9);
+            gfx.fillRect(16, 30, 16, 4);
+
+            // Head / Skin
+            gfx.fillStyle(0xf8c291, 1);
+            gfx.fillCircle(24, 20, 9);
+
+            // Hair
+            gfx.fillStyle(hairColor, 1);
+            gfx.fillCircle(24, 16, 9);
+            gfx.fillRect(15, 16, 18, 5);
+
+            // Eyes
+            gfx.fillStyle(0x2d3436, 1);
+            gfx.fillRect(21, 20, 2, 3);
+            gfx.fillRect(26, 20, 2, 3);
+
+            // Weapon
+            if (weaponType.includes('SWORD')) {
+                gfx.fillStyle(0xdcdde1, 1);
+                gfx.fillRect(35, 18, 3, 26);
+                gfx.fillStyle(0xe1b12c, 1);
+                gfx.fillRect(32, 32, 9, 3); // Crossguard
+            } else if (weaponType === 'STAFF') {
+                gfx.fillStyle(0x8c7ae6, 1);
+                gfx.fillCircle(35, 16, 5);
+                gfx.fillStyle(0x795548, 1);
+                gfx.fillRect(34, 20, 3, 28);
+            } else {
+                // Axe
+                gfx.fillStyle(0x718093, 1);
+                gfx.fillRect(31, 16, 8, 10);
+                gfx.fillStyle(0x57606f, 1);
+                gfx.fillRect(34, 20, 3, 28);
+            }
+
+            gfx.generateTexture(key, w, h);
+        }
+
+        renderIsometricMap() {
+            this.terrainGroup.clear(true, true);
+            this.overlayGroup.clear(true, true);
+
+            const currentRot = currentRotation;
+
+            // We iterate and sort tiles back-to-front based on (rx + ry)
+            const renderList = [];
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const { rx, ry } = transformCoords(x, y, currentRot);
+                    const height = ELEVATION_MAP[y][x];
+                    const terrain = TERRAIN_MAP[y][x];
+                    renderList.push({ x, y, rx, ry, height, terrain, depth: (rx + ry) * 100 + height });
+                }
+            }
+
+            // Sort so back tiles draw first, front tiles overlap correctly
+            renderList.sort((a, b) => a.depth - b.depth);
+
+            // Render each 3D Block (Top Face, Left Face, Right Face)
+            renderList.forEach(t => {
+                this.drawIsometricBlock(t.x, t.y, t.rx, t.ry, t.height, t.terrain);
+            });
+
+            // Re-draw grid highlight overlays if in Move or Action mode
+            this.drawGridHighlights();
+
+            // Reposition units and cursor based on current rotation
+            this.syncUnitPositions();
+            this.updateCursorScreenPosition();
+        }
+
+        drawIsometricBlock(gx, gy, rx, ry, height, terrain) {
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+            const gfx = this.add.graphics();
+            gfx.setDepth((rx + ry) * 100 + height * 2);
+
+            // Palette mapping for Terrain
+            let topColor, leftColor, rightColor;
+            if (terrain === 0) {
+                // Water (Shimmering blue)
+                topColor = 0x227093;
+                leftColor = 0x192a56;
+                rightColor = 0x182c61;
+            } else if (terrain === 3) {
+                // Ancient Stone ruins
+                topColor = 0x95a5a6;
+                leftColor = 0x7f8c8d;
+                rightColor = 0x5a6364;
+            } else {
+                // Grass with subtle elevation color shading
+                topColor = height > 2 ? 0x27ae60 : 0x2ecc71;
+                leftColor = 0x1e824c;
+                rightColor = 0x145a32;
+            }
+
+            const hw = TILE_WIDTH / 2;
+            const hh = TILE_HEIGHT / 2;
+            const colHeight = (height + 1) * HEIGHT_STEP;
+
+            // 1. Left Vertical Face
+            gfx.fillStyle(leftColor, 1);
+            gfx.beginPath();
+            gfx.moveTo(sx - hw, sy);
+            gfx.lineTo(sx, sy + hh);
+            gfx.lineTo(sx, sy + hh + colHeight);
+            gfx.lineTo(sx - hw, sy + colHeight);
+            gfx.closePath();
+            gfx.fillPath();
+
+            // 2. Right Vertical Face
+            gfx.fillStyle(rightColor, 1);
+            gfx.beginPath();
+            gfx.moveTo(sx, sy + hh);
+            gfx.lineTo(sx + hw, sy);
+            gfx.lineTo(sx + hw, sy + colHeight);
+            gfx.lineTo(sx, sy + hh + colHeight);
+            gfx.closePath();
+            gfx.fillPath();
+
+            // 3. Top Rhombus Face
+            gfx.fillStyle(topColor, 1);
+            gfx.lineStyle(1, 0xffffff, terrain === 0 ? 0.35 : 0.15);
+            gfx.beginPath();
+            gfx.moveTo(sx, sy - hh);
+            gfx.lineTo(sx + hw, sy);
+            gfx.lineTo(sx, sy + hh);
+            gfx.lineTo(sx - hw, sy);
+            gfx.closePath();
+            gfx.fillPath();
+            gfx.strokePath();
+
+            // Subtle Stone / Grass details
+            if (terrain === 3) {
+                gfx.lineStyle(1, 0x475354, 0.4);
+                gfx.lineBetween(sx - 8, sy - 2, sx + 8, sy - 2);
+            }
+
+            this.terrainGroup.add(gfx);
+        }
+
+        drawGridHighlights() {
+            this.overlayGroup.clear(true, true);
+
+            // Highlight Blue Reachable Tiles (Movement)
+            if (currentMode === BattleState.MODE_SELECT_MOVE) {
+                reachableTiles.forEach(tile => {
+                    this.drawTileOverlay(tile.x, tile.y, 0x2980b9, 0.65, 0x3498db);
+                });
+            }
+
+            // Highlight Red Targetable Tiles (Attack / Magic)
+            if (currentMode === BattleState.MODE_SELECT_ACTION_TARGET || currentMode === BattleState.MODE_SELECT_MAGIC_TARGET) {
+                targetableTiles.forEach(tile => {
+                    this.drawTileOverlay(tile.x, tile.y, 0xc0392b, 0.65, 0xe74c3c);
+                });
+            }
+        }
+
+        drawTileOverlay(gx, gy, fillColor, alpha, borderColor) {
+            const { rx, ry } = transformCoords(gx, gy, currentRotation);
+            const height = ELEVATION_MAP[gy][gx];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            const gfx = this.add.graphics();
+            gfx.setDepth((rx + ry) * 100 + height * 2 + 5);
+
+            const hw = TILE_WIDTH / 2 - 2;
+            const hh = TILE_HEIGHT / 2 - 1;
+
+            gfx.fillStyle(fillColor, alpha);
+            gfx.lineStyle(2, borderColor, 0.9);
+            gfx.beginPath();
+            gfx.moveTo(sx, sy - hh);
+            gfx.lineTo(sx + hw, sy);
+            gfx.lineTo(sx, sy + hh);
+            gfx.lineTo(sx - hw, sy);
+            gfx.closePath();
+            gfx.fillPath();
+            gfx.strokePath();
+
+            this.overlayGroup.add(gfx);
+        }
+
+        createCursor() {
+            this.cursorContainer = this.add.container(0, 0);
+            this.cursorContainer.setDepth(99999);
+
+            this.cursorSprite = this.add.sprite(0, 0, 'fft_cursor');
+            this.cursorSprite.setOrigin(0.5, 1.2);
+
+            // Floating height indicator text
+            this.cursorHeightText = this.add.text(0, -32, 'H: 2.0h', {
+                fontFamily: 'VT323',
+                fontSize: '18px',
+                color: '#ffd32a',
+                stroke: '#000000',
+                strokeThickness: 3
+            }).setOrigin(0.5, 1);
+
+            this.cursorContainer.add([this.cursorSprite, this.cursorHeightText]);
+
+            // Idle Bobbing Animation (Iconic FFT hovering cursor inside container)
+            this.tweens.add({
+                targets: this.cursorSprite,
+                y: -8,
+                duration: 480,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+        }
+
+        updateCursorScreenPosition() {
+            if (!this.cursorContainer) return;
+
+            const { rx, ry } = transformCoords(cursorGrid.x, cursorGrid.y, currentRotation);
+            const height = ELEVATION_MAP[cursorGrid.y][cursorGrid.x];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            this.cursorContainer.setPosition(sx, sy);
+            if (this.cursorHeightText) {
+                this.cursorHeightText.setText(`H: ${height.toFixed(1)}h`);
+            }
+
+            this.updateInspectorUI(cursorGrid.x, cursorGrid.y);
+        }
+
+        spawnUnits() {
+            unitsList.forEach(u => {
+                let textureKey = 'char_squire';
+                if (u.id === 'agrias') textureKey = 'char_knight';
+                if (u.id === 'enemy_knight') textureKey = 'char_brigand';
+                if (u.id === 'enemy_mage') textureKey = 'char_mage';
+
+                const sprite = this.add.sprite(0, 0, textureKey);
+                sprite.setOrigin(0.5, 0.85);
+
+                // Health / CT Gauge overhead
+                const barGfx = this.add.graphics();
+
+                this.unitSprites.set(u.id, { sprite, barGfx, unit: u });
+            });
+
+            this.syncUnitPositions();
+        }
+
+        syncUnitPositions() {
+            if (!this.unitSprites || this.unitSprites.size === 0) return;
+
+            unitsList.forEach(u => {
+                if (u.hp <= 0) {
+                    const data = this.unitSprites.get(u.id);
+                    if (data && data.sprite) {
+                        data.sprite.setVisible(false);
+                        data.barGfx.setVisible(false);
+                    }
+                    return;
+                }
+
+                const { rx, ry } = transformCoords(u.x, u.y, currentRotation);
+                const height = ELEVATION_MAP[u.y][u.x];
+                const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+                const data = this.unitSprites.get(u.id);
+                if (data) {
+                    data.sprite.setPosition(sx, sy);
+                    data.sprite.setDepth((rx + ry) * 100 + height * 2 + 10);
+                    data.sprite.setVisible(true);
+
+                    // Flip sprite depending on facing direction relative to current camera
+                    const relativeFacing = this.calculateScreenFacing(u.facing, currentRotation);
+                    data.sprite.setFlipX(relativeFacing === 'LEFT');
+
+                    // Draw overhead mini HP bar
+                    data.barGfx.clear();
+                    data.barGfx.setDepth((rx + ry) * 100 + height * 2 + 12);
+                    data.barGfx.fillStyle(0x000000, 0.7);
+                    data.barGfx.fillRect(sx - 16, sy - 52, 32, 5);
+                    const hpRatio = Math.max(0, u.hp / u.maxHp);
+                    data.barGfx.fillStyle(u.isPlayer ? 0x2ecc71 : 0xe74c3c, 1);
+                    data.barGfx.fillRect(sx - 15, sy - 51, 30 * hpRatio, 3);
+                }
+            });
+        }
+
+        calculateScreenFacing(facing, rotation) {
+            // Map 4 compass directions against 4 camera rotations to flip sprite X
+            const compass = ['SOUTH', 'WEST', 'NORTH', 'EAST'];
+            const fIndex = compass.indexOf(facing);
+            const relative = (fIndex - rotation + 4) % 4;
+            return (relative === 1 || relative === 2) ? 'LEFT' : 'RIGHT';
+        }
+
+        calculateReachableTiles(unit) {
+            const maxMove = unit.move;
+            const maxJump = unit.jump;
+            const visited = new Map();
+            const queue = [{ x: unit.x, y: unit.y, dist: 0 }];
+            visited.set(`${unit.x},${unit.y}`, 0);
+
+            const validTiles = [];
+            const directions = [
+                { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+                { dx: 0, dy: 1 }, { dx: 0, dy: -1 }
+            ];
+
+            while (queue.length > 0) {
+                const curr = queue.shift();
+
+                if (curr.dist > 0) {
+                    // Can only stop on un-occupied tile
+                    const isOccupied = unitsList.some(u => u.hp > 0 && u.x === curr.x && u.y === curr.y);
+                    if (!isOccupied) {
+                        validTiles.push({ x: curr.x, y: curr.y });
+                    }
+                }
+
+                if (curr.dist >= maxMove) continue;
+
+                for (const d of directions) {
+                    const nx = curr.x + d.dx;
+                    const ny = curr.y + d.dy;
+
+                    if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+
+                    const currH = ELEVATION_MAP[curr.y][curr.x];
+                    const nextH = ELEVATION_MAP[ny][nx];
+                    const heightDiff = Math.abs(nextH - currH);
+
+                    // Terrain Jump check (Cannot climb height diff greater than Jump stat!)
+                    if (heightDiff > maxJump) continue;
+
+                    // Cannot pass through living enemies
+                    const enemyBlocking = unitsList.some(u => u.hp > 0 && !u.isPlayer && u.x === nx && u.y === ny);
+                    if (enemyBlocking && unit.isPlayer) continue;
+
+                    const nextDist = curr.dist + 1;
+                    const key = `${nx},${ny}`;
+                    if (!visited.has(key) || visited.get(key) > nextDist) {
+                        visited.set(key, nextDist);
+                        queue.push({ x: nx, y: ny, dist: nextDist });
+                    }
+                }
+            }
+            return validTiles;
+        }
+
+        calculateActionRange(unit, range = 1, heightTolerance = 2) {
+            const validTargets = [];
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const manhattan = Math.abs(unit.x - x) + Math.abs(unit.y - y);
+                    const heightDiff = Math.abs(ELEVATION_MAP[y][x] - ELEVATION_MAP[unit.y][unit.x]);
+                    if (manhattan > 0 && manhattan <= range && heightDiff <= heightTolerance) {
+                        validTargets.push({ x, y });
+                    }
+                }
+            }
+            return validTargets;
+        }
+
+        setupInputHandlers() {
+            // Keyboard: Arrow keys & WASD to navigate cursor
+            this.input.keyboard.on('keydown', event => {
+                switch (event.code) {
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        this.moveCursorByScreenDelta(-1, 0);
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        this.moveCursorByScreenDelta(1, 0);
+                        break;
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        this.moveCursorByScreenDelta(0, -1);
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        this.moveCursorByScreenDelta(0, 1);
+                        break;
+                    case 'KeyQ':
+                        this.rotateCamera(-1);
+                        break;
+                    case 'KeyE':
+                        this.rotateCamera(1);
+                        break;
+                    case 'Space':
+                    case 'Enter':
+                        this.handleTileSelection(cursorGrid.x, cursorGrid.y);
+                        break;
+                    case 'Escape':
+                        this.cancelCurrentAction();
+                        break;
+                }
+            });
+
+            // Mouse Hover & Click on Isometric Canvas
+            this.input.on('pointermove', pointer => {
+                const hovered = this.screenToGrid(pointer.x, pointer.y);
+                if (hovered && (hovered.x !== cursorGrid.x || hovered.y !== cursorGrid.y)) {
+                    cursorGrid.x = hovered.x;
+                    cursorGrid.y = hovered.y;
+                    this.updateCursorScreenPosition();
+                    sound.playCursor();
+                }
+            });
+
+            this.input.on('pointerdown', pointer => {
+                const clicked = this.screenToGrid(pointer.x, pointer.y);
+                if (clicked) {
+                    cursorGrid.x = clicked.x;
+                    cursorGrid.y = clicked.y;
+                    this.updateCursorScreenPosition();
+                    this.handleTileSelection(clicked.x, clicked.y);
+                }
+            });
+        }
+
+        moveCursorByScreenDelta(drx, dry) {
+            // Move relative to current camera perspective
+            const { rx, ry } = transformCoords(cursorGrid.x, cursorGrid.y, currentRotation);
+            const newRx = Phaser.Math.Clamp(rx + drx, 0, GRID_SIZE - 1);
+            const newRy = Phaser.Math.Clamp(ry + dry, 0, GRID_SIZE - 1);
+            const orig = inverseTransformCoords(newRx, newRy, currentRotation);
+
+            cursorGrid.x = orig.x;
+            cursorGrid.y = orig.y;
+            this.updateCursorScreenPosition();
+            sound.playCursor();
+        }
+
+        screenToGrid(screenX, screenY) {
+            // Raycast closest tile center accounting for 3D elevation
+            let closestTile = null;
+            let minDistance = 99999;
+
+            for (let x = 0; x < GRID_SIZE; x++) {
+                for (let y = 0; y < GRID_SIZE; y++) {
+                    const { rx, ry } = transformCoords(x, y, currentRotation);
+                    const height = ELEVATION_MAP[y][x];
+                    const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+                    const dist = Phaser.Math.Distance.Between(screenX, screenY, sx, sy);
+                    if (dist < minDistance && dist < 32) {
+                        minDistance = dist;
+                        closestTile = { x, y };
+                    }
+                }
+            }
+            return closestTile;
+        }
+
+        rotateCamera(direction) {
+            sound.playRotate();
+            currentRotation = (currentRotation + direction + 4) % 4;
+
+            // Camera rotation tween flair
+            this.tweens.add({
+                targets: this.cameras.main,
+                zoom: 1.05,
+                duration: 120,
+                yoyo: true,
+                ease: 'Quad.easeInOut',
+                onComplete: () => {
+                    this.renderIsometricMap();
+                    showToast(`Camera Angle: ${currentRotation * 90}°`);
+                }
+            });
+        }
+
+        bindDOMUIEvents() {
+            // Header Camera Buttons
+            document.getElementById('btn-rot-left').addEventListener('click', () => this.rotateCamera(-1));
+            document.getElementById('btn-rot-right').addEventListener('click', () => this.rotateCamera(1));
+
+            // Command: Move
+            document.getElementById('cmd-move').addEventListener('click', () => {
+                if (!activeUnit || activeUnit.hasMoved || currentMode === BattleState.MODE_ENEMY_TURN) return;
+                sound.playConfirm();
+                currentMode = BattleState.MODE_SELECT_MOVE;
+                reachableTiles = this.calculateReachableTiles(activeUnit);
+                this.drawGridHighlights();
+                showToast('Select destination tile (Blue)');
+            });
+
+            // Command: Action -> Open Submenu
+            document.getElementById('cmd-act').addEventListener('click', () => {
+                if (!activeUnit || activeUnit.hasActed || currentMode === BattleState.MODE_ENEMY_TURN) return;
+                sound.playConfirm();
+                document.getElementById('menu-main-list').classList.add('hidden');
+                document.getElementById('menu-sub-act').classList.remove('hidden');
+            });
+
+            // Submenu: Basic Attack
+            document.getElementById('act-attack').addEventListener('click', () => {
+                sound.playConfirm();
+                currentMode = BattleState.MODE_SELECT_ACTION_TARGET;
+                targetableTiles = this.calculateActionRange(activeUnit, 1, 2);
+                this.drawGridHighlights();
+                showToast('Select target to Attack (Red)');
+            });
+
+            // Submenu: Fire Magick
+            document.getElementById('act-fire').addEventListener('click', () => {
+                if (activeUnit.mp < 12) {
+                    sound.playCancel();
+                    showToast('Not enough MP for Fire!');
+                    return;
+                }
+                sound.playConfirm();
+                currentMode = BattleState.MODE_SELECT_MAGIC_TARGET;
+                targetableTiles = this.calculateActionRange(activeUnit, 3, 3);
+                this.drawGridHighlights();
+                showToast('Select tile for Fire Magick (Range 3)');
+            });
+
+            // Submenu: Back
+            document.getElementById('act-back').addEventListener('click', () => {
+                sound.playCancel();
+                this.resetMenuToMain();
+            });
+
+            // Command: Wait -> Show Facing Directions
+            document.getElementById('cmd-wait').addEventListener('click', () => {
+                sound.playConfirm();
+                document.getElementById('menu-main-list').classList.add('hidden');
+                document.getElementById('menu-sub-facing').classList.remove('hidden');
+                showToast('Choose final facing direction');
+            });
+
+            // Facing direction buttons
+            document.querySelectorAll('.fft-facing-btn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const dir = e.currentTarget.getAttribute('data-dir');
+                    sound.playConfirm();
+                    this.finishUnitTurn(dir);
+                });
+            });
+
+            // Command: Status
+            document.getElementById('cmd-status').addEventListener('click', () => {
+                sound.playConfirm();
+                showToast(`${activeUnit.name} • ${activeUnit.job} • LV 14 • HP: ${activeUnit.hp}/${activeUnit.maxHp}`);
+            });
+        }
+
+        resetMenuToMain() {
+            document.getElementById('menu-main-list').classList.remove('hidden');
+            document.getElementById('menu-sub-act').classList.add('hidden');
+            document.getElementById('menu-sub-facing').classList.add('hidden');
+        }
+
+        cancelCurrentAction() {
+            sound.playCancel();
+            currentMode = BattleState.MODE_IDLE;
+            reachableTiles = [];
+            targetableTiles = [];
+            this.overlayGroup.clear(true, true);
+            this.resetMenuToMain();
+            showToast('Action cancelled');
+        }
+
+        handleTileSelection(tx, ty) {
+            if (!activeUnit) return;
+
+            // 1. Moving Unit
+            if (currentMode === BattleState.MODE_SELECT_MOVE) {
+                const isReachable = reachableTiles.some(t => t.x === tx && t.y === ty);
+                if (isReachable) {
+                    this.executeUnitMovement(activeUnit, tx, ty);
+                } else {
+                    sound.playCancel();
+                    showToast('Tile out of Move or Jump range!');
+                }
+                return;
+            }
+
+            // 2. Basic Physical Attack
+            if (currentMode === BattleState.MODE_SELECT_ACTION_TARGET) {
+                const isTargetable = targetableTiles.some(t => t.x === tx && t.y === ty);
+                const targetUnit = unitsList.find(u => u.hp > 0 && u.x === tx && u.y === ty);
+
+                if (isTargetable && targetUnit) {
+                    this.executeAttack(activeUnit, targetUnit);
+                } else {
+                    sound.playCancel();
+                    showToast('No valid target on this tile!');
+                }
+                return;
+            }
+
+            // 3. Fire Magick Spellcast
+            if (currentMode === BattleState.MODE_SELECT_MAGIC_TARGET) {
+                const isTargetable = targetableTiles.some(t => t.x === tx && t.y === ty);
+                if (isTargetable) {
+                    this.executeFireMagic(activeUnit, tx, ty);
+                } else {
+                    sound.playCancel();
+                    showToast('Tile out of magic casting range!');
+                }
+                return;
+            }
+        }
+
+        executeUnitMovement(unit, targetX, targetY) {
+            currentMode = BattleState.MODE_MOVING;
+            sound.playConfirm();
+            this.overlayGroup.clear(true, true);
+
+            // Update facing direction based on displacement
+            if (targetX > unit.x) unit.facing = 'EAST';
+            else if (targetX < unit.x) unit.facing = 'WEST';
+            else if (targetY > unit.y) unit.facing = 'SOUTH';
+            else if (targetY < unit.y) unit.facing = 'NORTH';
+
+            unit.x = targetX;
+            unit.y = targetY;
+            unit.hasMoved = true;
+
+            // Move Sprite animation with jump arc
+            const data = this.unitSprites.get(unit.id);
+            const { rx, ry } = transformCoords(targetX, targetY, currentRotation);
+            const height = ELEVATION_MAP[targetY][targetX];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            this.tweens.add({
+                targets: data.sprite,
+                x: sx,
+                y: sy,
+                duration: 380,
+                ease: 'Sine.easeInOut',
+                onComplete: () => {
+                    currentMode = BattleState.MODE_IDLE;
+                    this.syncUnitPositions();
+                    this.updateUnitCard(unit);
+                    this.updateCommandMenuButtons(unit);
+                    showToast(`${unit.name} moved.`);
+                }
+            });
+        }
+
+        executeAttack(attacker, target) {
+            currentMode = BattleState.MODE_IDLE;
+            this.overlayGroup.clear(true, true);
+            attacker.hasActed = true;
+
+            sound.playAttack();
+
+            // Calculate FFT Back / Side attack bonus
+            const isBackAttack = attacker.facing === target.facing;
+            const baseDamage = Phaser.Math.Between(34, 46);
+            const finalDamage = isBackAttack ? Math.floor(baseDamage * 1.5) : baseDamage;
+
+            // Screen Slash Effect
+            this.createSlashEffect(target.x, target.y);
+
+            // Apply Damage
+            target.hp = Math.max(0, target.hp - finalDamage);
+
+            // Show Floating Combat Text (FFT Damage numbers)
+            this.showFloatingDamage(target.x, target.y, `-${finalDamage}`, '#ff4757');
+
+            this.time.delayedCall(450, () => {
+                this.syncUnitPositions();
+                this.updateUnitCard(target);
+                this.updateCommandMenuButtons(attacker);
+                this.resetMenuToMain();
+
+                if (target.hp <= 0) {
+                    showToast(`${target.name} has fallen!`);
+                } else {
+                    showToast(`${attacker.name} strikes ${target.name} for ${finalDamage} DMG!`);
+                }
+            });
+        }
+
+        executeFireMagic(caster, targetX, targetY) {
+            currentMode = BattleState.MODE_IDLE;
+            this.overlayGroup.clear(true, true);
+            caster.hasActed = true;
+            caster.mp -= 12;
+
+            sound.playFireSpell();
+
+            // Explosion effect over target tile
+            this.createExplosionEffect(targetX, targetY);
+
+            // Damage units in blast radius
+            const blastTargets = unitsList.filter(u => u.hp > 0 && Math.abs(u.x - targetX) <= 1 && Math.abs(u.y - targetY) <= 1);
+            blastTargets.forEach(u => {
+                const dmg = Phaser.Math.Between(45, 60);
+                u.hp = Math.max(0, u.hp - dmg);
+                this.showFloatingDamage(u.x, u.y, `-${dmg}`, '#ff6b6b');
+            });
+
+            this.time.delayedCall(500, () => {
+                this.syncUnitPositions();
+                this.updateUnitCard(caster);
+                this.updateCommandMenuButtons(caster);
+                this.resetMenuToMain();
+                showToast(`Fire Magick engulfed the battlefield!`);
+            });
+        }
+
+        createSlashEffect(gx, gy) {
+            const { rx, ry } = transformCoords(gx, gy, currentRotation);
+            const height = ELEVATION_MAP[gy][gx];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            const slash = this.add.graphics();
+            slash.setDepth(99998);
+            slash.lineStyle(4, 0xffffff, 1);
+            slash.beginPath();
+            slash.moveTo(sx - 20, sy - 40);
+            slash.lineTo(sx + 20, sy);
+            slash.strokePath();
+
+            this.tweens.add({
+                targets: slash,
+                alpha: 0,
+                scaleX: 1.4,
+                scaleY: 1.4,
+                duration: 220,
+                onComplete: () => slash.destroy()
+            });
+        }
+
+        createExplosionEffect(gx, gy) {
+            const { rx, ry } = transformCoords(gx, gy, currentRotation);
+            const height = ELEVATION_MAP[gy][gx];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            const circle = this.add.circle(sx, sy - 15, 8, 0xff3838, 0.9);
+            circle.setDepth(99998);
+
+            this.tweens.add({
+                targets: circle,
+                radius: 36,
+                alpha: 0,
+                duration: 380,
+                ease: 'Cubic.easeOut',
+                onComplete: () => circle.destroy()
+            });
+        }
+
+        showFloatingDamage(gx, gy, text, color) {
+            const { rx, ry } = transformCoords(gx, gy, currentRotation);
+            const height = ELEVATION_MAP[gy][gx];
+            const { x: sx, y: sy } = gridToScreen(rx, ry, height, this.originX, this.originY);
+
+            const dmgText = this.add.text(sx, sy - 45, text, {
+                fontFamily: 'VT323',
+                fontSize: '28px',
+                color: color,
+                stroke: '#000000',
+                strokeThickness: 4
+            }).setOrigin(0.5, 0.5).setDepth(99999);
+
+            this.tweens.add({
+                targets: dmgText,
+                y: sy - 85,
+                alpha: 0,
+                duration: 800,
+                ease: 'Back.easeOut',
+                onComplete: () => dmgText.destroy()
+            });
+        }
+
+        finishUnitTurn(facingDir) {
+            if (!activeUnit) return;
+            activeUnit.facing = facingDir;
+            activeUnit.ct = 0; // Reset CT after turn
+
+            this.resetMenuToMain();
+            this.syncUnitPositions();
+            this.updateUnitCard(activeUnit);
+
+            showToast(`${activeUnit.name} ends turn facing ${facingDir}.`);
+
+            // Check Victory / Defeat
+            const enemiesAlive = unitsList.filter(u => !u.isPlayer && u.hp > 0).length;
+            const alliesAlive = unitsList.filter(u => u.isPlayer && u.hp > 0).length;
+
+            if (enemiesAlive === 0) {
+                showToast('★ VICTORY ACHIEVED! Mandalia Plains Cleared! ★');
+                return;
+            }
+            if (alliesAlive === 0) {
+                showToast('☠ DEFEAT! The party has fallen... ☠');
+                return;
+            }
+
+            // Proceed to next CT cycle
+            this.time.delayedCall(600, () => this.initNextTurn());
+        }
+
+        initNextTurn() {
+            // Advance CT (Charge Time) for all units until someone hits 100
+            let readyUnit = null;
+            while (!readyUnit) {
+                for (const u of unitsList) {
+                    if (u.hp > 0) {
+                        u.ct += u.speed;
+                        if (u.ct >= 100 && !readyUnit) {
+                            readyUnit = u;
+                        }
+                    }
+                }
+            }
+
+            activeUnit = readyUnit;
+            activeUnit.hasMoved = false;
+            activeUnit.hasActed = false;
+
+            // Move cursor to active unit
+            cursorGrid.x = activeUnit.x;
+            cursorGrid.y = activeUnit.y;
+            this.updateCursorScreenPosition();
+
+            // Update UI
+            document.getElementById('active-unit-name').textContent = activeUnit.name;
+            this.updateUnitCard(activeUnit);
+            this.drawUnitPortrait(activeUnit);
+            this.updateCommandMenuButtons(activeUnit);
+
+            if (activeUnit.isPlayer) {
+                currentMode = BattleState.MODE_IDLE;
+                document.getElementById('tactics-menu').classList.remove('hidden');
+                showToast(`${activeUnit.name}'s Turn (Player)`);
+            } else {
+                currentMode = BattleState.MODE_ENEMY_TURN;
+                document.getElementById('tactics-menu').classList.add('hidden');
+                showToast(`${activeUnit.name}'s Turn (Enemy)`);
+                this.time.delayedCall(800, () => this.runEnemyAI(activeUnit));
+            }
+        }
+
+        runEnemyAI(enemy) {
+            // Find closest living player
+            const alivePlayers = unitsList.filter(u => u.isPlayer && u.hp > 0);
+            if (alivePlayers.length === 0) return;
+
+            alivePlayers.sort((a, b) => {
+                const distA = Math.abs(enemy.x - a.x) + Math.abs(enemy.y - a.y);
+                const distB = Math.abs(enemy.x - b.x) + Math.abs(enemy.y - b.y);
+                return distA - distB;
+            });
+
+            const closestTarget = alivePlayers[0];
+            const dist = Math.abs(enemy.x - closestTarget.x) + Math.abs(enemy.y - closestTarget.y);
+
+            // If in attack range (1 tile), attack immediately
+            if (dist === 1) {
+                this.executeAttack(enemy, closestTarget);
+                this.time.delayedCall(900, () => this.finishUnitTurn('WEST'));
+                return;
+            }
+
+            // Otherwise move towards target
+            const moves = this.calculateReachableTiles(enemy);
+            if (moves.length > 0) {
+                moves.sort((a, b) => {
+                    const dA = Math.abs(a.x - closestTarget.x) + Math.abs(a.y - closestTarget.y);
+                    const dB = Math.abs(b.x - closestTarget.x) + Math.abs(b.y - closestTarget.y);
+                    return dA - dB;
+                });
+
+                const bestMove = moves[0];
+                this.executeUnitMovement(enemy, bestMove.x, bestMove.y);
+
+                this.time.delayedCall(700, () => {
+                    // Check if now in range to attack
+                    const newDist = Math.abs(enemy.x - closestTarget.x) + Math.abs(enemy.y - closestTarget.y);
+                    if (newDist === 1) {
+                        this.executeAttack(enemy, closestTarget);
+                    }
+                    this.time.delayedCall(700, () => this.finishUnitTurn('WEST'));
+                });
+            } else {
+                this.finishUnitTurn('SOUTH');
+            }
+        }
+
+        updateCommandMenuButtons(unit) {
+            const btnMove = document.getElementById('cmd-move');
+            const btnAct = document.getElementById('cmd-act');
+
+            if (unit.hasMoved) btnMove.classList.add('disabled');
+            else btnMove.classList.remove('disabled');
+
+            if (unit.hasActed) btnAct.classList.add('disabled');
+            else btnAct.classList.remove('disabled');
+        }
+
+        updateUnitCard(unit) {
+            document.getElementById('card-unit-name').textContent = unit.name;
+            document.getElementById('card-unit-job').textContent = unit.job;
+            document.getElementById('card-hp-text').textContent = `${unit.hp} / ${unit.maxHp}`;
+            document.getElementById('card-mp-text').textContent = `${unit.mp} / ${unit.maxMp}`;
+
+            const hpPct = Math.max(0, (unit.hp / unit.maxHp) * 100);
+            document.getElementById('card-hp-bar').style.width = `${hpPct}%`;
+
+            const mpPct = Math.max(0, (unit.mp / unit.maxMp) * 100);
+            document.getElementById('card-mp-bar').style.width = `${mpPct}%`;
+
+            document.getElementById('card-stat-move').textContent = unit.move;
+            document.getElementById('card-stat-jump').textContent = unit.jump;
+            document.getElementById('card-stat-face').textContent = unit.facing;
+        }
+
+        updateInspectorUI(gx, gy) {
+            document.getElementById('tile-coord').textContent = `(${gx}, ${gy})`;
+            const h = ELEVATION_MAP[gy][gx];
+            document.getElementById('tile-height').textContent = `${h.toFixed(1)} h`;
+
+            const tType = TERRAIN_MAP[gy][gx];
+            let tName = 'Verdant Grass';
+            if (tType === 0) tName = 'Mandalia River';
+            if (tType === 3) tName = 'Ancient Ruins';
+            document.getElementById('tile-type').textContent = tName;
+
+            // If a unit is standing on this tile, preview their info
+            const unitOnTile = unitsList.find(u => u.hp > 0 && u.x === gx && u.y === gy);
+            if (unitOnTile) {
+                this.updateUnitCard(unitOnTile);
+                this.drawUnitPortrait(unitOnTile);
+            }
+        }
+
+        drawUnitPortrait(unit) {
+            const canvas = document.getElementById('portrait-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 64, 64);
+
+            // Background
+            ctx.fillStyle = unit.isPlayer ? '#1e3799' : '#b71540';
+            ctx.fillRect(0, 0, 64, 64);
+
+            // Face & Hair Portrait drawing
+            ctx.fillStyle = '#f8c291'; // Skin
+            ctx.beginPath();
+            ctx.arc(32, 34, 18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Hair
+            ctx.fillStyle = unit.id === 'ramza' ? '#f6b93b' : (unit.id === 'agrias' ? '#f5f0cb' : '#2f3542');
+            ctx.beginPath();
+            ctx.arc(32, 26, 20, Math.PI, 0, false);
+            ctx.lineTo(52, 40);
+            ctx.lineTo(44, 28);
+            ctx.lineTo(32, 20);
+            ctx.lineTo(20, 28);
+            ctx.lineTo(12, 40);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes & Eyebrows
+            ctx.fillStyle = '#2f3542';
+            ctx.fillRect(25, 34, 4, 3);
+            ctx.fillRect(35, 34, 4, 3);
+
+            // Armor collar
+            ctx.fillStyle = unit.isPlayer ? '#4a69bd' : '#78e08f';
+            ctx.fillRect(16, 50, 32, 14);
+        }
+    }
+
+    // Toast Notification helper (replaces alert/confirm)
+    let toastTimeout = null;
+    function showToast(msg) {
+        const toast = document.getElementById('game-toast');
+        const text = document.getElementById('toast-text');
+        text.textContent = msg;
+        toast.style.opacity = '1';
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+            toast.style.opacity = '0';
+        }, 2400);
+    }
+
+    // Launch Phaser on Window Load
+    window.addEventListener('load', () => {
+        const config = {
+            type: Phaser.AUTO,
+            parent: 'phaser-mount',
+            width: window.innerWidth,
+            height: window.innerHeight,
+            pixelArt: true,
+            physics: { default: 'arcade' },
+            scene: [FFTBattleScene]
+        };
+
+        const game = new Phaser.Game(config);
+
+        // Handle window resize dynamically
+        window.addEventListener('resize', () => {
+            game.scale.resize(window.innerWidth, window.innerHeight);
+            const scene = game.scene.getScene('FFTBattleScene');
+            if (scene) {
+                scene.originX = window.innerWidth / 2;
+                scene.originY = window.innerHeight / 2 - 20;
+                scene.renderIsometricMap();
+            }
+        });
+    });
+</script>
+</body>
+</html>
